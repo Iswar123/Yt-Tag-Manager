@@ -337,7 +337,7 @@ export default function DashboardPage() {
         )}
 
         {credsLoading && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 12 }}>Loading...</div>
+
         )}
       </div>
 
@@ -366,8 +366,8 @@ export default function DashboardPage() {
 
 // ── Settings Drawer ───────────────────────────────────────────────
 function SettingsDrawer({ supabase, user, onClose, showToast }) {
-  const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
+  const [channelLoading, setChannelLoading] = useState(false);
+  const [apiKeysLoading, setApiKeysLoading] = useState(false);
 
   const [form, setForm] = useState({
     channel_id:          '',
@@ -393,7 +393,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   useEffect(() => { loadData(); loadApiKeys(); }, []);
 
   async function loadData() {
-    setLoading(true);
+    // 1. Supabase se credentials turant load karo (fast)
     const { data } = await supabase
       .from('user_credentials')
       .select('*')
@@ -402,14 +402,16 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
     if (data) {
       setForm({
-        channel_id:         data.channel_id         || '',
-        yt_refresh_token:   data.yt_refresh_token   || '',
-        ai_provider:        data.ai_provider         || 'openrouter',
-        groq_api_key:       data.ai_api_key          || '',
-        openrouter_api_key: data.openrouter_api_key  || '',
+        channel_id:         data.channel_id        || '',
+        yt_refresh_token:   data.yt_refresh_token  || '',
+        ai_provider:        data.ai_provider       || 'openrouter',
+        groq_api_key:       data.ai_api_key        || '',
+        openrouter_api_key: data.openrouter_api_key || '',
       });
 
+      // 2. Channel info alag background mein load karo — drawer block nahi hoga
       if (data.yt_refresh_token) {
+        setChannelLoading(true);
         try {
           const res    = await fetch('/api/youtube');
           const ytData = await res.json();
@@ -417,9 +419,9 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             setChannelInfo({ name: ytData.channelTitle, avatar: ytData.channelAvatar || '' });
           }
         } catch (_) {}
+        setChannelLoading(false);
       }
     }
-    setLoading(false);
   }
 
   async function loadApiKeys() {
@@ -546,20 +548,24 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
           </button>
         </div>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 12 }}>Loading...</div>
-        ) : (
+
+
+
           <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
             {/* User info */}
             <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              {displayAvatar ? (
+              {channelLoading ? (
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0022' }} />
+              ) : displayAvatar ? (
                 <img src={displayAvatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${ytConnected ? '#ff8c0055' : '#ff8c0033'}` }} />
               ) : (
                 <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0033', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>👤</div>
               )}
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd' }}>{displayName}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd' }}>
+                  {channelLoading ? (user?.user_metadata?.full_name || 'User') : displayName}
+                </div>
                 <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>{user?.email}</div>
               </div>
               <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
@@ -591,7 +597,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     </button>
                   </div>
                 </>
-              ) : (
+      
                 <button onClick={handleConnectYouTube}
                   style={{ width: '100%', padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', background: 'linear-gradient(135deg,#001a0a,#001408)', border: '1px solid #00cc6644', color: '#00cc66' }}>
                   🔗 Connect YouTube
@@ -719,7 +725,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     </button>
                   </div>
                 </div>
-              ) : (
+      
                 <button onClick={() => setShowAddKey(true)}
                   style={{ width: '100%', background: '#0a0a0a', border: '1px solid #ff8c0022', color: '#ff8c0066', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                   + Naya API Key Add Karo
@@ -735,7 +741,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             </button>
 
           </div>
-        )}
       </div>
     </>
   );
@@ -765,7 +770,7 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
             style={{ background: 'none', border: 'none', color: '#666', fontSize: 13, cursor: 'pointer', padding: '4px 0', fontWeight: 700 }}>
             ← Back
           </button>
-        ) : (
+
           <>
             <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎬</div>
             <span style={{ fontSize: 15, fontWeight: 900, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Tag Manager</span>

@@ -79,7 +79,7 @@ export default function DashboardPage() {
       .eq('user_id', user.id)
       .single();
 
-    if (!data || !data.yt_client_id || !data.yt_refresh_token || !data.ai_api_key) {
+    if (!data || !data.yt_refresh_token || !data.ai_api_key) {
       setCreds(null);
       setCredsLoading(false);
       return;

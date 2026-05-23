@@ -269,7 +269,7 @@ function SettingsInner() {
               <input
                 type={showAiKey ? 'text' : 'password'}
                 value={form.ai_api_key}
-                onChange={e => setForm(p => ({ ...p, ai_api_key: e.target.value }))}
+                onChange={e => { const v=e.target.value; const dp=v.startsWith('gsk_')?'groq':v.startsWith('sk-or-')?'openrouter':null; setForm(p => ({ ...p, ai_api_key: v, ...(dp?{ai_provider:dp}:{}) })); }}
                 placeholder={form.ai_provider === 'groq' ? 'gsk_xxxxxxxxxxxx' : 'sk-or-xxxxxxxxxxxx'}
                 style={{ ...inputStyle, paddingRight: 44 }}
               />

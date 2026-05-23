@@ -117,6 +117,20 @@ function SettingsInner() {
     router.push('/login');
   }
 
+  async function handleDisconnect() {
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase
+      .from('user_credentials')
+      .upsert({
+        user_id:          user.id,
+        yt_refresh_token: null,
+        channel_id:       null,
+        updated_at:       new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    setForm(p => ({ ...p, yt_refresh_token: '', channel_id: '' }));
+    showToast('🔌 YouTube disconnect ho gaya!', 'warn');
+  }
+
   function handleConnectYouTube() {
     const redirectUri = `${window.location.origin}/api/auth/yt-callback`;
     const scope = encodeURIComponent([
@@ -210,39 +224,44 @@ function SettingsInner() {
         {/* YouTube Section */}
         <Section title="🎬 YouTube">
 
-          {/* Connect button */}
-          <button onClick={handleConnectYouTube}
-            style={{
-              width: '100%', padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              background: ytConnected ? '#080f08' : 'linear-gradient(135deg, #001a0a, #001408)',
-              border: `1px solid ${ytConnected ? '#44bb6622' : '#00cc6644'}`,
-              color: ytConnected ? '#44bb6688' : '#00cc66',
-              boxShadow: ytConnected ? 'none' : '0 0 24px rgba(0,204,102,0.1)',
-              transition: 'all 0.2s',
-            }}>
-            <GoogleIcon />
-            {ytConnected ? '🔄 Re-connect YouTube' : '🔗 Connect YouTube'}
-          </button>
-
           {ytConnected ? (
-            <div style={{ background: '#001a08', border: '1px solid #00cc6618', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#44bb66', display: 'flex', alignItems: 'center', gap: 6 }}>
-              ✅ YouTube se connected hai — channel ke videos manage kar sakte ho
-            </div>
-          ) : (
-            <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#444', lineHeight: 1.7 }}>
-              ↑ Button dabao → Google account se allow karo → automatically connect ho jayega
-            </div>
-          )}
+            <>
+              {/* Connected state */}
+              <div style={{ background: '#001a08', border: '1px solid #00cc6622', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, color: '#44bb66', fontWeight: 700, marginBottom: 8 }}>✅ YouTube Connected</div>
+                {form.channel_id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, color: '#444', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Channel ID:</span>
+                    <span style={{ fontSize: 11, color: '#44bb6699', fontFamily: 'monospace', background: '#001208', border: '1px solid #44bb6618', borderRadius: 6, padding: '2px 8px' }}>{form.channel_id}</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, color: '#333' }}>Channel ID fetch nahi hua — re-connect karo</div>
+                )}
+              </div>
 
-          <Field label="Channel ID (optional)">
-            <input
-              value={form.channel_id}
-              onChange={e => setForm(p => ({ ...p, channel_id: e.target.value }))}
-              placeholder="UCxxxxxxxxxxxxxxxx — blank chhod sakte ho"
-              style={inputStyle}
-            />
-          </Field>
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleConnectYouTube}
+                  style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#080f08', border: '1px solid #44bb6622', color: '#44bb6677' }}>
+                  <GoogleIcon /> 🔄 Re-connect
+                </button>
+                <button onClick={handleDisconnect}
+                  style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: '#100000', border: '1px solid #ff000022', color: '#ff4444' }}>
+                  🔌 Disconnect
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button onClick={handleConnectYouTube}
+                style={{ width: '100%', padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'linear-gradient(135deg, #001a0a, #001408)', border: '1px solid #00cc6644', color: '#00cc66', boxShadow: '0 0 24px rgba(0,204,102,0.1)' }}>
+                <GoogleIcon /> 🔗 Connect YouTube
+              </button>
+              <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#444', lineHeight: 1.7 }}>
+                ↑ Button dabao → Google account se allow karo → automatically connect ho jayega
+              </div>
+            </>
+          )}
         </Section>
 
         {/* AI Section */}
@@ -283,7 +302,7 @@ function SettingsInner() {
           <div style={{ background: '#080808', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#2a2a2a', lineHeight: 1.6 }}>
             Model:{' '}
             <span style={{ color: form.ai_provider === 'groq' ? '#00cc6655' : '#ff8c0055' }}>
-              {form.ai_provider === 'groq' ? 'llama3-8b-8192 (free tier available)' : 'openai/gpt-4o-mini'}
+              {form.ai_provider === 'groq' ? 'llama-3.3-70b-versatile (free tier available)' : 'openai/gpt-4o-mini'}
             </span>
           </div>
         </Section>

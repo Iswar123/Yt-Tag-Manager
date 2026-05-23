@@ -18,10 +18,11 @@ function SettingsInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
-  const [user,    setUser]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
-  const [toast,   setToast]   = useState({ msg: '', type: 'info' });
+  const [user,        setUser]        = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [saving,      setSaving]      = useState(false);
+  const [toast,       setToast]       = useState({ msg: '', type: 'info' });
+  const [channelInfo, setChannelInfo] = useState({ name: '', avatar: '' }); // NEW
 
   const [form, setForm] = useState({
     channel_id:       '',
@@ -47,7 +48,7 @@ function SettingsInner() {
     const ytConnected = searchParams.get('yt_connected');
     const ytError     = searchParams.get('yt_error');
     if (ytConnected === 'true') {
-      loadData(); // Refresh so badge updates
+      loadData();
       showToast('✅ YouTube connect ho gaya!', 'success');
       router.replace('/settings');
     } else if (ytError) {
@@ -81,6 +82,22 @@ function SettingsInner() {
         ai_provider:      data.ai_provider      || 'openrouter',
         ai_api_key:       data.ai_api_key       || '',
       });
+
+      // Fetch YouTube channel info if connected
+      if (data.yt_refresh_token) {
+        try {
+          const res    = await fetch('/api/youtube');
+          const ytData = await res.json();
+          if (ytData.channelTitle) {
+            setChannelInfo({
+              name:   ytData.channelTitle,
+              avatar: ytData.channelAvatar || '',
+            });
+          }
+        } catch (e) {
+          // Silently fail — fallback to Google profile
+        }
+      }
     }
     setLoading(false);
   }
@@ -125,7 +142,7 @@ function SettingsInner() {
   }
 
   async function loadApiKeys() {
-    const res = await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list' }) });
+    const res  = await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list' }) });
     const data = await res.json();
     if (data.keys) setApiKeys(data.keys);
   }
@@ -133,7 +150,7 @@ function SettingsInner() {
   async function handleAddKey() {
     if (!newKey.trim()) { showToast('❌ API key daalo!', 'error'); return; }
     setAddingKey(true);
-    const res = await fetch('/api/youtube', {
+    const res  = await fetch('/api/youtube', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'add', api_key: newKey.trim(), label: newLabel.trim() || `Key ${apiKeys.length + 1}` }),
     });
@@ -166,6 +183,7 @@ function SettingsInner() {
         updated_at:       new Date().toISOString(),
       }, { onConflict: 'user_id' });
     setForm(p => ({ ...p, yt_refresh_token: '', channel_id: '' }));
+    setChannelInfo({ name: '', avatar: '' }); // Reset channel info
     showToast('🔌 YouTube disconnect ho gaya!', 'warn');
   }
 
@@ -176,7 +194,6 @@ function SettingsInner() {
       'https://www.googleapis.com/auth/youtube.force-ssl',
     ].join(' '));
 
-    // Client ID is public — safe to expose in frontend
     const clientId = process.env.NEXT_PUBLIC_YOUTUBE_CLIENT_ID;
     if (!clientId) {
       showToast('❌ Server config error — admin se contact karo', 'error'); return;
@@ -200,8 +217,12 @@ function SettingsInner() {
     </div>
   );
 
-  const tc           = toastColors[toast.type] || toastColors.info;
-  const ytConnected  = !!form.yt_refresh_token;
+  const tc          = toastColors[toast.type] || toastColors.info;
+  const ytConnected = !!form.yt_refresh_token;
+
+  // Avatar and display name logic
+  const displayAvatar = ytConnected && channelInfo.avatar ? channelInfo.avatar : user?.user_metadata?.avatar_url;
+  const displayName   = ytConnected && channelInfo.name   ? channelInfo.name   : user?.user_metadata?.full_name || 'User';
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', paddingBottom: 80 }}>
@@ -242,12 +263,25 @@ function SettingsInner() {
 
         {/* User info */}
         <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          {user?.user_metadata?.avatar_url && (
-            <img src={user.user_metadata.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid #ff8c0033' }} />
+          {displayAvatar ? (
+            <img
+              src={displayAvatar}
+              alt=""
+              style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${ytConnected ? '#ff8c0055' : '#ff8c0033'}` }}
+            />
+          ) : (
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0033', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
+              👤
+            </div>
           )}
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd' }}>{user?.user_metadata?.full_name || 'User'}</div>
-            <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>{user?.email}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd' }}>{displayName}</div>
+            <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>
+              {ytConnected && channelInfo.name
+                ? <span style={{ color: '#333' }}>{user?.email}</span>
+                : user?.email
+              }
+            </div>
           </div>
           <div style={{
             fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px',
@@ -264,7 +298,6 @@ function SettingsInner() {
 
           {ytConnected ? (
             <>
-              {/* Connected state */}
               <div style={{ background: '#001a08', border: '1px solid #00cc6622', borderRadius: 12, padding: '12px 14px' }}>
                 <div style={{ fontSize: 11, color: '#44bb66', fontWeight: 700, marginBottom: 8 }}>✅ YouTube Connected</div>
                 {form.channel_id ? (
@@ -277,7 +310,6 @@ function SettingsInner() {
                 )}
               </div>
 
-              {/* Action buttons */}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={handleConnectYouTube}
                   style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#080f08', border: '1px solid #44bb6622', color: '#44bb6677' }}>
@@ -351,7 +383,6 @@ function SettingsInner() {
             💡 Google Cloud Console se multiple projects ke API keys add karo — quota khatam hone par automatically next key use hogi
           </div>
 
-          {/* Existing keys list */}
           {apiKeys.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {apiKeys.map(k => (
@@ -383,7 +414,6 @@ function SettingsInner() {
             </div>
           )}
 
-          {/* Add new key */}
           {showAddKey ? (
             <div style={{ background: '#0c0c0c', border: '1px solid #252525', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <input

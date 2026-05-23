@@ -10,18 +10,20 @@ async function getUserCredentials() {
 
   const { data, error } = await supabase
     .from('user_credentials')
-    .select('*')
+    .select('yt_refresh_token, channel_id')
     .eq('user_id', user.id)
     .single();
 
-  if (error || !data) throw new Error('Settings mein credentials add karo pehle');
+  if (error || !data) throw new Error('Pehle YouTube connect karo Settings mein');
 
-  const { yt_client_id, yt_client_secret, yt_refresh_token, channel_id } = data;
-  if (!yt_client_id || !yt_client_secret || !yt_refresh_token) {
-    throw new Error('YouTube credentials incomplete hain — Settings check karo');
-  }
+  const { yt_refresh_token, channel_id } = data;
+  if (!yt_refresh_token) throw new Error('YouTube connect nahi hai — Settings mein Connect YouTube dabao');
 
-  return { clientId: yt_client_id, clientSecret: yt_client_secret, refreshToken: yt_refresh_token, channelId: channel_id };
+  const clientId     = process.env.YOUTUBE_CLIENT_ID;
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('Server config error: YouTube credentials missing');
+
+  return { clientId, clientSecret, refreshToken: yt_refresh_token, channelId: channel_id };
 }
 
 async function getAccessToken(clientId, clientSecret, refreshToken) {

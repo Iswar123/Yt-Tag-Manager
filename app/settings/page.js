@@ -134,8 +134,8 @@ function SettingsInner() {
   function handleConnectYouTube() {
     const redirectUri = `${window.location.origin}/api/auth/yt-callback`;
     const scope = encodeURIComponent([
+      'https://www.googleapis.com/auth/youtube',
       'https://www.googleapis.com/auth/youtube.force-ssl',
-      'https://www.googleapis.com/auth/youtube.readonly',
     ].join(' '));
 
     // Client ID is public — safe to expose in frontend

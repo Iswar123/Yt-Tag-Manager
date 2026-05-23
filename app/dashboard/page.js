@@ -393,7 +393,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   useEffect(() => { loadData(); loadApiKeys(); }, []);
 
   async function loadData() {
-    // 1. Supabase se credentials turant load karo (fast)
     const { data } = await supabase
       .from('user_credentials')
       .select('*')
@@ -409,7 +408,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
         openrouter_api_key: data.openrouter_api_key || '',
       });
 
-      // 2. Channel info alag background mein load karo — drawer block nahi hoga
       if (data.yt_refresh_token) {
         setChannelLoading(true);
         try {
@@ -430,7 +428,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
     if (data.keys) setApiKeys(data.keys);
   }
 
-  // Auto-save provider on switch
   async function handleProviderSwitch(provider) {
     setForm(f => ({ ...f, ai_provider: provider }));
     clearTimeout(providerSaveTimer.current);
@@ -444,7 +441,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
     }, 300);
   }
 
-  // Save key on blur
   async function handleKeyBlur(field) {
     const upsertData = {
       user_id:    user.id,
@@ -548,199 +544,197 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
           </button>
         </div>
 
+        <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-
-
-          <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-            {/* User info */}
-            <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              {channelLoading ? (
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0022' }} />
-              ) : displayAvatar ? (
-                <img src={displayAvatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${ytConnected ? '#ff8c0055' : '#ff8c0033'}` }} />
-              ) : (
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0033', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>👤</div>
-              )}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd' }}>
-                  {channelLoading ? (user?.user_metadata?.full_name || 'User') : displayName}
-                </div>
-                <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>{user?.email}</div>
+          {/* User info */}
+          <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            {channelLoading ? (
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0022' }} />
+            ) : displayAvatar ? (
+              <img src={displayAvatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${ytConnected ? '#ff8c0055' : '#ff8c0033'}` }} />
+            ) : (
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0033', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>👤</div>
+            )}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd' }}>
+                {channelLoading ? (user?.user_metadata?.full_name || 'User') : displayName}
               </div>
-              <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
-                {ytConnected ? '✅ YT Connected' : '⬡ Not Connected'}
+              <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>{user?.email}</div>
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
+              {ytConnected ? '✅ YT Connected' : '⬡ Not Connected'}
+            </div>
+          </div>
+
+          {/* YouTube Section — FIX 1: ternary ':' added */}
+          <DrawerSection title="🎬 YouTube">
+            {ytConnected ? (
+              <>
+                <div style={{ background: '#001a08', border: '1px solid #00cc6622', borderRadius: 12, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 11, color: '#44bb66', fontWeight: 700, marginBottom: 8 }}>✅ YouTube Connected</div>
+                  {form.channel_id && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 10, color: '#444', fontWeight: 700, textTransform: 'uppercase' }}>Channel ID:</span>
+                      <span style={{ fontSize: 11, color: '#44bb6699', fontFamily: 'monospace', background: '#001208', border: '1px solid #44bb6618', borderRadius: 6, padding: '2px 8px' }}>{form.channel_id}</span>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={handleConnectYouTube}
+                    style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: '#080f08', border: '1px solid #44bb6622', color: '#44bb6677' }}>
+                    🔄 Re-connect
+                  </button>
+                  <button onClick={handleDisconnect}
+                    style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: '#100000', border: '1px solid #ff000022', color: '#ff4444' }}>
+                    🔌 Disconnect
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button onClick={handleConnectYouTube}
+                style={{ width: '100%', padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', background: 'linear-gradient(135deg,#001a0a,#001408)', border: '1px solid #00cc6644', color: '#00cc66' }}>
+                🔗 Connect YouTube
+              </button>
+            )}
+          </DrawerSection>
+
+          {/* AI Section */}
+          <DrawerSection title="🤖 AI Settings">
+            {/* Provider toggle */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['openrouter', 'groq'].map(p => (
+                <button key={p} onClick={() => handleProviderSwitch(p)}
+                  style={{
+                    flex: 1, padding: '10px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                    background: form.ai_provider === p ? (p === 'groq' ? '#001208' : '#120800') : '#0a0a0a',
+                    border: `1px solid ${form.ai_provider === p ? (p === 'groq' ? '#00cc6644' : '#ff8c0044') : '#1a1a1a'}`,
+                    color: form.ai_provider === p ? (p === 'groq' ? '#00cc66' : '#ff8c00') : '#333',
+                    transition: 'all 0.15s',
+                  }}>
+                  {p === 'openrouter' ? '🔶 OpenRouter' : '⚡ Groq'}
+                </button>
+              ))}
+            </div>
+
+            {/* OpenRouter key */}
+            <div>
+              <div style={{ fontSize: 10, color: form.ai_provider === 'openrouter' ? '#ff8c00' : '#333', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px', transition: 'color 0.2s' }}>
+                🔶 OpenRouter API Key {form.ai_provider === 'openrouter' && <span style={{ color: '#ff8c0066', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>← active</span>}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showOpenrouterKey ? 'text' : 'password'}
+                  value={form.openrouter_api_key}
+                  onChange={e => setForm(f => ({ ...f, openrouter_api_key: e.target.value }))}
+                  onBlur={() => handleKeyBlur('openrouter')}
+                  placeholder="sk-or-xxxxxxxxxxxx"
+                  style={{ ...inputStyle, paddingRight: 44, borderColor: form.ai_provider === 'openrouter' ? '#ff8c0033' : '#1e1e1e' }}
+                />
+                <button onClick={() => setShowOpenrouterKey(p => !p)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 14, padding: 4 }}>
+                  {showOpenrouterKey ? '🙈' : '👁'}
+                </button>
               </div>
             </div>
 
-            {/* YouTube Section */}
-            <DrawerSection title="🎬 YouTube">
-              {ytConnected ? (
-                <>
-                  <div style={{ background: '#001a08', border: '1px solid #00cc6622', borderRadius: 12, padding: '12px 14px' }}>
-                    <div style={{ fontSize: 11, color: '#44bb66', fontWeight: 700, marginBottom: 8 }}>✅ YouTube Connected</div>
-                    {form.channel_id && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 10, color: '#444', fontWeight: 700, textTransform: 'uppercase' }}>Channel ID:</span>
-                        <span style={{ fontSize: 11, color: '#44bb6699', fontFamily: 'monospace', background: '#001208', border: '1px solid #44bb6618', borderRadius: 6, padding: '2px 8px' }}>{form.channel_id}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={handleConnectYouTube}
-                      style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: '#080f08', border: '1px solid #44bb6622', color: '#44bb6677' }}>
-                      🔄 Re-connect
-                    </button>
-                    <button onClick={handleDisconnect}
-                      style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: '#100000', border: '1px solid #ff000022', color: '#ff4444' }}>
-                      🔌 Disconnect
-                    </button>
-                  </div>
-                </>
-      
-                <button onClick={handleConnectYouTube}
-                  style={{ width: '100%', padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', background: 'linear-gradient(135deg,#001a0a,#001408)', border: '1px solid #00cc6644', color: '#00cc66' }}>
-                  🔗 Connect YouTube
+            {/* Groq key */}
+            <div>
+              <div style={{ fontSize: 10, color: form.ai_provider === 'groq' ? '#00cc66' : '#333', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px', transition: 'color 0.2s' }}>
+                ⚡ Groq API Key {form.ai_provider === 'groq' && <span style={{ color: '#00cc6666', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>← active</span>}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showGroqKey ? 'text' : 'password'}
+                  value={form.groq_api_key}
+                  onChange={e => setForm(f => ({ ...f, groq_api_key: e.target.value }))}
+                  onBlur={() => handleKeyBlur('groq')}
+                  placeholder="gsk_xxxxxxxxxxxx"
+                  style={{ ...inputStyle, paddingRight: 44, borderColor: form.ai_provider === 'groq' ? '#00cc6633' : '#1e1e1e' }}
+                />
+                <button onClick={() => setShowGroqKey(p => !p)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 14, padding: 4 }}>
+                  {showGroqKey ? '🙈' : '👁'}
                 </button>
-              )}
-            </DrawerSection>
-
-            {/* AI Section — dono keys */}
-            <DrawerSection title="🤖 AI Settings">
-              {/* Provider toggle */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['openrouter', 'groq'].map(p => (
-                  <button key={p} onClick={() => handleProviderSwitch(p)}
-                    style={{
-                      flex: 1, padding: '10px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer',
-                      background: form.ai_provider === p ? (p === 'groq' ? '#001208' : '#120800') : '#0a0a0a',
-                      border: `1px solid ${form.ai_provider === p ? (p === 'groq' ? '#00cc6644' : '#ff8c0044') : '#1a1a1a'}`,
-                      color: form.ai_provider === p ? (p === 'groq' ? '#00cc66' : '#ff8c00') : '#333',
-                      transition: 'all 0.15s',
-                    }}>
-                    {p === 'openrouter' ? '🔶 OpenRouter' : '⚡ Groq'}
-                  </button>
-                ))}
               </div>
+            </div>
 
-              {/* OpenRouter key */}
-              <div>
-                <div style={{ fontSize: 10, color: form.ai_provider === 'openrouter' ? '#ff8c00' : '#333', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px', transition: 'color 0.2s' }}>
-                  🔶 OpenRouter API Key {form.ai_provider === 'openrouter' && <span style={{ color: '#ff8c0066', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>← active</span>}
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showOpenrouterKey ? 'text' : 'password'}
-                    value={form.openrouter_api_key}
-                    onChange={e => setForm(f => ({ ...f, openrouter_api_key: e.target.value }))}
-                    onBlur={() => handleKeyBlur('openrouter')}
-                    placeholder="sk-or-xxxxxxxxxxxx"
-                    style={{ ...inputStyle, paddingRight: 44, borderColor: form.ai_provider === 'openrouter' ? '#ff8c0033' : '#1e1e1e' }}
-                  />
-                  <button onClick={() => setShowOpenrouterKey(p => !p)}
-                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 14, padding: 4 }}>
-                    {showOpenrouterKey ? '🙈' : '👁'}
-                  </button>
-                </div>
-              </div>
+            <div style={{ background: '#080808', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#2a2a2a', lineHeight: 1.6 }}>
+              Active model:{' '}
+              <span style={{ color: form.ai_provider === 'groq' ? '#00cc6655' : '#ff8c0055' }}>
+                {form.ai_provider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-4o-mini'}
+              </span>
+            </div>
+          </DrawerSection>
 
-              {/* Groq key */}
-              <div>
-                <div style={{ fontSize: 10, color: form.ai_provider === 'groq' ? '#00cc66' : '#333', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px', transition: 'color 0.2s' }}>
-                  ⚡ Groq API Key {form.ai_provider === 'groq' && <span style={{ color: '#00cc6666', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>← active</span>}
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showGroqKey ? 'text' : 'password'}
-                    value={form.groq_api_key}
-                    onChange={e => setForm(f => ({ ...f, groq_api_key: e.target.value }))}
-                    onBlur={() => handleKeyBlur('groq')}
-                    placeholder="gsk_xxxxxxxxxxxx"
-                    style={{ ...inputStyle, paddingRight: 44, borderColor: form.ai_provider === 'groq' ? '#00cc6633' : '#1e1e1e' }}
-                  />
-                  <button onClick={() => setShowGroqKey(p => !p)}
-                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 14, padding: 4 }}>
-                    {showGroqKey ? '🙈' : '👁'}
-                  </button>
-                </div>
-              </div>
+          {/* YouTube API Keys */}
+          <DrawerSection title="🔑 YouTube API Keys (Quota Rotation)">
+            <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7, background: '#0a0a0a', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px' }}>
+              💡 Multiple projects ke API keys add karo — quota khatam hone par automatically next key use hogi
+            </div>
 
-              <div style={{ background: '#080808', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#2a2a2a', lineHeight: 1.6 }}>
-                Active model:{' '}
-                <span style={{ color: form.ai_provider === 'groq' ? '#00cc6655' : '#ff8c0055' }}>
-                  {form.ai_provider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-4o-mini'}
-                </span>
-              </div>
-            </DrawerSection>
-
-            {/* YouTube API Keys */}
-            <DrawerSection title="🔑 YouTube API Keys (Quota Rotation)">
-              <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7, background: '#0a0a0a', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px' }}>
-                💡 Multiple projects ke API keys add karo — quota khatam hone par automatically next key use hogi
-              </div>
-
-              {apiKeys.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {apiKeys.map(k => (
-                    <div key={k.id} style={{ background: '#0a0a0a', border: `1px solid ${k.is_active ? '#ff8c0018' : '#ff000018'}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: k.is_active ? '#ff8c00' : '#ff4444', marginBottom: 2 }}>
-                          {k.is_active ? '🟢' : '🔴'} {k.label}
-                        </div>
-                        <div style={{ fontSize: 9, color: '#333' }}>
-                          Used: {k.use_count || 0} times
-                          {k.exhausted_at && <span style={{ color: '#ff4444', marginLeft: 6 }}>• Quota exhausted</span>}
-                          {k.last_used_at && <span style={{ marginLeft: 6 }}>• Last: {new Date(k.last_used_at).toLocaleDateString()}</span>}
-                        </div>
+            {apiKeys.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {apiKeys.map(k => (
+                  <div key={k.id} style={{ background: '#0a0a0a', border: `1px solid ${k.is_active ? '#ff8c0018' : '#ff000018'}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: k.is_active ? '#ff8c00' : '#ff4444', marginBottom: 2 }}>
+                        {k.is_active ? '🟢' : '🔴'} {k.label}
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {!k.is_active && (
-                          <button onClick={() => handleReactivateKey(k.id)}
-                            style={{ background: '#001a08', border: '1px solid #44bb6622', color: '#44bb66', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
-                            ↺ Reset
-                          </button>
-                        )}
-                        <button onClick={() => handleDeleteKey(k.id)}
-                          style={{ background: '#100000', border: '1px solid #ff000022', color: '#ff4444', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
-                          🗑
-                        </button>
+                      <div style={{ fontSize: 9, color: '#333' }}>
+                        Used: {k.use_count || 0} times
+                        {k.exhausted_at && <span style={{ color: '#ff4444', marginLeft: 6 }}>• Quota exhausted</span>}
+                        {k.last_used_at && <span style={{ marginLeft: 6 }}>• Last: {new Date(k.last_used_at).toLocaleDateString()}</span>}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {showAddKey ? (
-                <div style={{ background: '#0c0c0c', border: '1px solid #252525', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (e.g. Project 1)" style={{ ...inputStyle, fontSize: 12 }} />
-                  <input value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="AIza... (YouTube Data API v3 key)" style={{ ...inputStyle, fontSize: 12, fontFamily: 'monospace' }} />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={handleAddKey} disabled={addingKey}
-                      style={{ flex: 1, background: addingKey ? '#0a0a0a' : 'linear-gradient(135deg,#ff8c00,#ff4400)', border: 'none', color: addingKey ? '#333' : '#fff', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 700, cursor: addingKey ? 'not-allowed' : 'pointer' }}>
-                      {addingKey ? '⏳ Adding...' : '✅ Add Key'}
-                    </button>
-                    <button onClick={() => { setShowAddKey(false); setNewKey(''); setNewLabel(''); }}
-                      style={{ background: '#0a0a0a', border: '1px solid #222', color: '#555', borderRadius: 8, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                      Cancel
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {!k.is_active && (
+                        <button onClick={() => handleReactivateKey(k.id)}
+                          style={{ background: '#001a08', border: '1px solid #44bb6622', color: '#44bb66', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                          ↺ Reset
+                        </button>
+                      )}
+                      <button onClick={() => handleDeleteKey(k.id)}
+                        style={{ background: '#100000', border: '1px solid #ff000022', color: '#ff4444', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                        🗑
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {/* FIX 2: showAddKey ternary ':' added */}
+            {showAddKey ? (
+              <div style={{ background: '#0c0c0c', border: '1px solid #252525', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (e.g. Project 1)" style={{ ...inputStyle, fontSize: 12 }} />
+                <input value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="AIza... (YouTube Data API v3 key)" style={{ ...inputStyle, fontSize: 12, fontFamily: 'monospace' }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={handleAddKey} disabled={addingKey}
+                    style={{ flex: 1, background: addingKey ? '#0a0a0a' : 'linear-gradient(135deg,#ff8c00,#ff4400)', border: 'none', color: addingKey ? '#333' : '#fff', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 700, cursor: addingKey ? 'not-allowed' : 'pointer' }}>
+                    {addingKey ? '⏳ Adding...' : '✅ Add Key'}
+                  </button>
+                  <button onClick={() => { setShowAddKey(false); setNewKey(''); setNewLabel(''); }}
+                    style={{ background: '#0a0a0a', border: '1px solid #222', color: '#555', borderRadius: 8, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
                 </div>
-      
-                <button onClick={() => setShowAddKey(true)}
-                  style={{ width: '100%', background: '#0a0a0a', border: '1px solid #ff8c0022', color: '#ff8c0066', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                  + Naya API Key Add Karo
-                </button>
-              )}
-            </DrawerSection>
+              </div>
+            ) : (
+              <button onClick={() => setShowAddKey(true)}
+                style={{ width: '100%', background: '#0a0a0a', border: '1px solid #ff8c0022', color: '#ff8c0066', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                + Naya API Key Add Karo
+              </button>
+            )}
+          </DrawerSection>
 
-            {/* Logout */}
-            <button
-              onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }}
-              style={{ width: '100%', background: '#100000', border: '1px solid #ff000022', color: '#ff4444', borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
-              🚪 Logout
-            </button>
+          {/* Logout */}
+          <button
+            onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }}
+            style={{ width: '100%', background: '#100000', border: '1px solid #ff000022', color: '#ff4444', borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+            🚪 Logout
+          </button>
 
-          </div>
+        </div>
       </div>
     </>
   );
@@ -755,6 +749,7 @@ function DrawerSection({ title, children }) {
   );
 }
 
+// FIX 3: Topbar ternary ':' added
 function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
   return (
     <div style={{
@@ -770,7 +765,7 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
             style={{ background: 'none', border: 'none', color: '#666', fontSize: 13, cursor: 'pointer', padding: '4px 0', fontWeight: 700 }}>
             ← Back
           </button>
-
+        ) : (
           <>
             <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎬</div>
             <span style={{ fontSize: 15, fontWeight: 900, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Tag Manager</span>

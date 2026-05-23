@@ -163,10 +163,25 @@ export async function PATCH(req) {
     );
     const updateData = await updateRes.json();
     if (!updateRes.ok) {
-      throw new Error(updateData?.error?.message || 'YouTube update fail');
+      throw new Error(updateData?.error?.message || JSON.stringify(updateData?.error) || 'YouTube update fail');
     }
 
-    return Response.json({ success: true, tagsUpdated: updateData.snippet?.tags?.length || 0 });
+    // Verify — re-fetch karke confirm karo ki tags actually change hue
+    await new Promise(r => setTimeout(r, 1500)); // 1.5s wait for YouTube to process
+    const verifyRes  = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const verifyData = await verifyRes.json();
+    const updatedTags = verifyData.items?.[0]?.snippet?.tags || [];
+    const firstNewTag = tagsArray[0]?.toLowerCase();
+    const verified = updatedTags.some(t => t.toLowerCase() === firstNewTag);
+
+    if (!verified) {
+      throw new Error('Tags YouTube pe save nahi hue — Settings mein YouTube Re-connect karo (new permissions needed)');
+    }
+
+    return Response.json({ success: true, tagsUpdated: updatedTags.length });
 
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

@@ -16,12 +16,13 @@ async function aiCall(prompt, provider, apiKey) {
       messages: [{ role: 'user', content: prompt }],
     }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `AI call failed (${res.status})`);
-  }
   const data = await res.json();
-  if (data.error) throw new Error(typeof data.error === 'string' ? data.error : data.error?.message || 'AI error');
+  if (!res.ok || data.error) {
+    const msg = data.error
+      ? (typeof data.error === 'string' ? data.error : data.error?.message || JSON.stringify(data.error))
+      : `AI call failed (${res.status})`;
+    throw new Error(msg);
+  }
   return (data.choices?.[0]?.message?.content || '').trim();
 }
 
@@ -38,21 +39,14 @@ export default function DashboardPage() {
   const [creds,        setCreds]        = useState(null);
   const [credsLoading, setCredsLoading] = useState(true);
 
-  const [videos,       setVideos]       = useState([]);
-  const [channelTitle, setChannelTitle] = useState('My Channel');
-  const [channelAvatar, setChannelAvatar] = useState('');
-  const [loading,      setLoading]      = useState(false);
-  const [loadError,    setLoadError]    = useState(null);
-
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [tags,          setTags]          = useState('');
   const [saving,        setSaving]        = useState(false);
   const [generating,    setGenerating]    = useState(false);
   const [status,        setStatus]        = useState('idle');
 
-  const [customId,      setCustomId]      = useState('');
-  const [fetchingCustom, setFetchingCustom] = useState(false);
-  const [showCustom,    setShowCustom]    = useState(false);
+  const [urlInput,      setUrlInput]      = useState('');
+  const [fetching,      setFetching]      = useState(false);
 
   const [toast, setToast] = useState({ msg: '', type: 'info' });
 
@@ -87,48 +81,28 @@ export default function DashboardPage() {
 
     setCreds(data);
     setCredsLoading(false);
-    loadVideos();
   }
 
-  async function loadVideos() {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const res  = await fetch('/api/youtube');
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Fetch fail');
-      setVideos(data.videos || []);
-      setChannelTitle(data.channelTitle || 'My Channel');
-      setChannelAvatar(data.channelAvatar || '');
-    } catch (e) {
-      setLoadError(e.message);
-      showToast('❌ ' + e.message, 'error');
-    }
-    setLoading(false);
-  }
-
-  function selectVideo(video) {
-    setSelectedVideo(video);
-    setTags((video.tags || []).join(', '));
-    setStatus('idle');
-  }
-
-  async function handleCustomFetch() {
-    const id = extractVideoId(customId);
-    if (!id) { showToast('⚠️ Video ID daalo!', 'warn'); return; }
-    setFetchingCustom(true);
+  async function handleFetch() {
+    const id = extractVideoId(urlInput);
+    if (!id) { showToast('⚠️ Video URL ya ID daalo!', 'warn'); return; }
+    setFetching(true);
+    setSelectedVideo(null);
+    setTags('');
     try {
       const res  = await fetch(`/api/youtube?videoId=${id}`);
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Fetch fail');
-      selectVideo(data);
-      setShowCustom(false);
-      setCustomId('');
+      if (!res.ok || data.error) throw new Error(
+        typeof data.error === 'string' ? data.error : JSON.stringify(data.error) || 'Fetch fail'
+      );
+      setSelectedVideo(data);
+      setTags((data.tags || []).join(', '));
+      setStatus('idle');
       showToast('✅ Video fetch ho gaya!', 'success');
     } catch (e) {
       showToast('❌ ' + e.message, 'error');
     }
-    setFetchingCustom(false);
+    setFetching(false);
   }
 
   async function generateTags() {
@@ -137,7 +111,7 @@ export default function DashboardPage() {
     setGenerating(true);
     try {
       const text = await aiCall(
-        `You are a YouTube SEO expert.\n\nVideo title: "${selectedVideo.title}"\nChannel: "${channelTitle}"\nCurrent tags: ${(selectedVideo.tags || []).join(', ') || 'none'}\nViews: ${selectedVideo.viewCount} | Likes: ${selectedVideo.likeCount}\n\nGenerate exactly 16 viral SEO YouTube tags for this video.\nRULES:\n- Mix of relevant language keywords based on video title\n- Include topic-specific tags, general category tags\n- Each tag max 3-4 words\n- Comma separated list\n- No # symbol, no quotes\n- Focus on high-search-volume keywords\nReturn ONLY the comma-separated tags, nothing else.`,
+        `You are a YouTube SEO expert.\n\nVideo title: "${selectedVideo.title}"\nCurrent tags: ${(selectedVideo.tags || []).join(', ') || 'none'}\nViews: ${selectedVideo.viewCount} | Likes: ${selectedVideo.likeCount}\n\nGenerate exactly 16 viral SEO YouTube tags for this video.\nRULES:\n- Mix of relevant language keywords based on video title\n- Include topic-specific tags, general category tags\n- Each tag max 3-4 words\n- Comma separated list\n- No # symbol, no quotes\n- Focus on high-search-volume keywords\nReturn ONLY the comma-separated tags, nothing else.`,
         creds.ai_provider || 'openrouter',
         creds.ai_api_key
       );
@@ -150,7 +124,7 @@ export default function DashboardPage() {
   }
 
   async function handleUpdate() {
-    if (!selectedVideo) { showToast('⚠️ Pehle video select karo!', 'warn'); return; }
+    if (!selectedVideo) { showToast('⚠️ Pehle video fetch karo!', 'warn'); return; }
     if (!tags.trim())   { showToast('⚠️ Tags khaali nahi ho sakte!', 'warn'); return; }
     setSaving(true);
     try {
@@ -160,13 +134,11 @@ export default function DashboardPage() {
         body: JSON.stringify({ videoId: selectedVideo.videoId, tags }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Update fail');
+      if (!res.ok || data.error) throw new Error(
+        typeof data.error === 'string' ? data.error : data.error?.message || JSON.stringify(data.error) || 'Update fail'
+      );
       setStatus('saved');
-      const updatedTags = tagList;
-      setSelectedVideo(prev => ({ ...prev, tags: updatedTags }));
-      setVideos(prev => prev.map(v =>
-        v.videoId === selectedVideo.videoId ? { ...v, tags: updatedTags } : v
-      ));
+      setSelectedVideo(prev => ({ ...prev, tags: tagList }));
       showToast('✅ Tags YouTube pe update ho gaye!', 'success');
       setTimeout(() => setStatus('idle'), 3000);
     } catch (e) {
@@ -190,70 +162,32 @@ export default function DashboardPage() {
   };
   const tc = toastColors[toast.type] || toastColors.info;
 
-  // ── No credentials → Setup screen with proper topbar ──
+  // ── No credentials → Setup screen ──
   if (!credsLoading && !creds) {
     return (
       <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
-        {/* Topbar — same as main dashboard */}
-        <div style={{
-          position: 'sticky', top: 0, zIndex: 10,
-          background: 'rgba(8,8,8,0.95)', backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid #161616',
-          padding: '0 16px', height: 52,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎬</div>
-            <span style={{ fontSize: 15, fontWeight: 900, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.3px' }}>
-              Tag Manager
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {user?.user_metadata?.avatar_url && (
-              <img src={user.user_metadata.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #333' }} />
-            )}
-            <button onClick={handleLogout}
-              style={{ background: 'transparent', border: '1px solid #222', color: '#555', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* Setup content */}
+        <Topbar user={user} onSettings={() => router.push('/settings')} onLogout={handleLogout} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          {/* Glow orb */}
-          <div style={{ position: 'relative', marginBottom: 32 }}>
-            <div style={{ width: 80, height: 80, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, boxShadow: '0 0 60px rgba(255,140,0,0.25), 0 0 120px rgba(255,140,0,0.1)' }}>
-              ⚙️
-            </div>
-          </div>
-
-          <div style={{ textAlign: 'center', maxWidth: 300, marginBottom: 32 }}>
-            <h2 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 900, color: '#eee', letterSpacing: '-0.5px' }}>Setup Karo Pehle</h2>
-            <p style={{ margin: 0, fontSize: 13, color: '#555', lineHeight: 1.8 }}>
-              YouTube credentials aur AI key add karo Settings mein — ek baar set karo, phir tag manager use karo!
-            </p>
-          </div>
-
-          {/* Steps */}
-          <div style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
-            {[
-              { n: '1', icon: '🔑', label: 'Google Cloud Console', sub: 'OAuth 2.0 Client banao' },
-              { n: '2', icon: '🤖', label: 'AI API Key', sub: 'Groq ya OpenRouter se' },
-              { n: '3', icon: '🚀', label: 'Done!', sub: 'Tags generate karo AI se' },
-            ].map(step => (
-              <div key={step.n} style={{ background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 32, height: 32, background: '#1a1a1a', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{step.icon}</div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#ccc' }}>{step.label}</div>
-                  <div style={{ fontSize: 11, color: '#444', marginTop: 1 }}>{step.sub}</div>
-                </div>
+          <div style={{ width: 80, height: 80, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, marginBottom: 28, boxShadow: '0 0 60px rgba(255,140,0,0.25)' }}>⚙️</div>
+          <h2 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 900, color: '#eee' }}>Setup Karo Pehle</h2>
+          <p style={{ margin: '0 0 28px', fontSize: 13, color: '#555', textAlign: 'center', lineHeight: 1.8, maxWidth: 280 }}>
+            YouTube credentials aur AI key add karo Settings mein — ek baar set karo, phir tag manager use karo!
+          </p>
+          {[
+            { icon: '🔑', label: 'Google Cloud Console', sub: 'OAuth 2.0 Client banao' },
+            { icon: '🤖', label: 'AI API Key', sub: 'Groq ya OpenRouter se' },
+            { icon: '🚀', label: 'Done!', sub: 'Tags generate karo AI se' },
+          ].map((step, i) => (
+            <div key={i} style={{ width: '100%', maxWidth: 320, background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <div style={{ width: 32, height: 32, background: '#1a1a1a', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{step.icon}</div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#ccc' }}>{step.label}</div>
+                <div style={{ fontSize: 11, color: '#444', marginTop: 1 }}>{step.sub}</div>
               </div>
-            ))}
-          </div>
-
+            </div>
+          ))}
           <button onClick={() => router.push('/settings')}
-            style={{ background: 'linear-gradient(135deg,#ff8c00,#ff4400)', border: 'none', color: '#fff', borderRadius: 14, padding: '14px 36px', fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 24px rgba(255,140,0,0.35)', letterSpacing: '0.3px' }}>
+            style={{ marginTop: 20, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', border: 'none', color: '#fff', borderRadius: 14, padding: '14px 36px', fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 24px rgba(255,140,0,0.35)' }}>
             ⚙️ Settings Kholao
           </button>
         </div>
@@ -270,167 +204,54 @@ export default function DashboardPage() {
           position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
           background: tc.bg, border: `1px solid ${tc.border}`, borderRadius: 12,
           padding: '10px 18px', fontSize: 13, color: tc.color, zIndex: 999,
-          whiteSpace: 'nowrap', boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
-          fontWeight: 600,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.6)', fontWeight: 600,
+          maxWidth: '85vw', textAlign: 'center',
         }}>
           {toast.msg}
         </div>
       )}
 
-      {/* Topbar */}
-      <div style={{
-        position: 'sticky', top: 0, zIndex: 10,
-        background: 'rgba(8,8,8,0.95)', backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid #161616',
-        padding: '0 16px', height: 52,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {selectedVideo ? (
-            <button onClick={() => { setSelectedVideo(null); setTags(''); setStatus('idle'); }}
-              style={{ background: 'none', border: 'none', color: '#666', fontSize: 13, cursor: 'pointer', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>
-              ← Back
-            </button>
-          ) : (
-            <>
-              <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎬</div>
-              <span style={{ fontSize: 15, fontWeight: 900, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.3px' }}>
-                Tag Manager
-              </span>
-            </>
-          )}
-        </div>
+      <Topbar user={user} onSettings={() => router.push('/settings')} onLogout={handleLogout} showBack={!!selectedVideo} onBack={() => { setSelectedVideo(null); setTags(''); setUrlInput(''); setStatus('idle'); }} />
 
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {!selectedVideo && (
-            <button onClick={loadVideos} disabled={loading}
-              style={{ background: '#141414', border: '1px solid #222', color: '#555', borderRadius: 8, width: 32, height: 32, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {loading ? '·' : '🔄'}
-            </button>
-          )}
-          <button onClick={() => router.push('/settings')}
-            style={{ background: '#141414', border: '1px solid #222', color: '#555', borderRadius: 8, width: 32, height: 32, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            ⚙️
-          </button>
-          {user?.user_metadata?.avatar_url && (
-            <img src={user.user_metadata.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #2a2a2a' }} />
-          )}
-        </div>
-      </div>
+      <div style={{ flex: 1, padding: '14px 12px 40px', maxWidth: 600, margin: '0 auto', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 32px', display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 600, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-
-        {/* Loading skeletons */}
-        {(loading || credsLoading) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-            {[1,2,3,4,5].map(i => (
-              <div key={i} style={{ background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 12, padding: 12, display: 'flex', gap: 10 }}>
-                <div style={{ width: 80, height: 45, background: '#1a1a1a', borderRadius: 8, flexShrink: 0, animation: 'pulse 1.5s ease infinite' }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ height: 10, background: '#1a1a1a', borderRadius: 4, marginBottom: 6, width: '80%' }} />
-                  <div style={{ height: 8, background: '#1a1a1a', borderRadius: 4, width: '40%' }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Error */}
-        {loadError && !loading && (
-          <div style={{ background: '#100000', border: '1px solid #ff000022', borderRadius: 14, padding: 16 }}>
-            <div style={{ fontSize: 12, color: '#ff4444', fontWeight: 800, marginBottom: 6 }}>❌ Load Error</div>
-            <div style={{ fontSize: 11, color: '#cc3333', fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-all' }}>{loadError}</div>
-            <button onClick={loadVideos}
-              style={{ marginTop: 12, background: '#1a0000', border: '1px solid #ff000044', color: '#ff4444', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              🔁 Retry
+        {/* URL Input Box */}
+        {!selectedVideo && (
+          <div style={{ background: '#0c0c0c', border: '1px solid #1e1400', borderRadius: 14, padding: 14 }}>
+            <div style={{ fontSize: 11, color: '#ff8c00', fontWeight: 800, marginBottom: 10, letterSpacing: '0.5px' }}>📹 VIDEO URL / ID</div>
+            <input
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleFetch()}
+              placeholder="YouTube URL ya Video ID daalo..."
+              style={{ width: '100%', background: '#080808', border: '1px solid #252525', borderRadius: 10, padding: '11px 14px', fontSize: 13, color: '#eee', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 10 }}
+            />
+            <button onClick={handleFetch} disabled={fetching || !urlInput.trim()}
+              style={{
+                width: '100%', padding: '13px', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: fetching || !urlInput.trim() ? 'not-allowed' : 'pointer',
+                background: fetching || !urlInput.trim() ? '#0a0a0a' : 'linear-gradient(135deg,#ff8c00,#ff4400)',
+                border: fetching || !urlInput.trim() ? '1px solid #1a1a1a' : 'none',
+                color: fetching || !urlInput.trim() ? '#333' : '#fff',
+                boxShadow: fetching || !urlInput.trim() ? 'none' : '0 4px 20px rgba(255,140,0,0.3)',
+              }}>
+              {fetching ? '⏳ Fetching...' : '🔍 Fetch Video'}
             </button>
           </div>
         )}
 
-        {/* Video List */}
-        {!loading && !credsLoading && !loadError && !selectedVideo && (
-          <>
-            {/* Channel header */}
-            <div style={{ background: '#0c0c0c', border: '1px solid #1e1400', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {channelAvatar ? (
-                  <img src={channelAvatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid #ff8c0033' }} />
-                ) : (
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#ff8c00,#ff4400)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>📺</div>
-                )}
-                <div>
-                  <div style={{ fontSize: 13, color: '#ddd', fontWeight: 800 }}>{channelTitle}</div>
-                  <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>Latest {videos.length} videos</div>
-                </div>
-              </div>
-              <button onClick={() => setShowCustom(v => !v)}
-                style={{ background: showCustom ? '#2a1500' : '#141414', border: `1px solid ${showCustom ? '#ff8c0055' : '#222'}`, color: showCustom ? '#ff8c00' : '#555', borderRadius: 8, padding: '6px 10px', fontSize: 10, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-                {showCustom ? '✕ Close' : '+ Custom'}
-              </button>
-            </div>
-
-            {showCustom && (
-              <div style={{ background: '#0c0c0c', border: '1px solid #2a1500', borderRadius: 12, padding: 14 }}>
-                <div style={{ fontSize: 11, color: '#ff8c00', fontWeight: 700, marginBottom: 10 }}>📹 Custom Video ID / URL</div>
-                <input
-                  value={customId}
-                  onChange={e => setCustomId(e.target.value)}
-                  placeholder="Video ID ya YouTube URL..."
-                  style={{ width: '100%', background: '#080808', border: '1px solid #222', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#eee', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 8 }}
-                />
-                <button onClick={handleCustomFetch} disabled={fetchingCustom || !customId.trim()}
-                  style={{ width: '100%', background: fetchingCustom ? '#111' : 'linear-gradient(135deg,#2a1000,#1a0500)', border: '1px solid #ff8c0033', color: fetchingCustom ? '#444' : '#ff8c00', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 700, cursor: fetchingCustom || !customId.trim() ? 'not-allowed' : 'pointer' }}>
-                  {fetchingCustom ? '⏳ Fetching...' : '🔍 Fetch Karo'}
-                </button>
-              </div>
-            )}
-
-            {videos.length === 0 && !loading && (
-              <div style={{ textAlign: 'center', padding: 48, color: '#2a2a2a', fontSize: 13 }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>📭</div>
-                Koi video nahi mila
-              </div>
-            )}
-
-            {videos.map(video => (
-              <button key={video.videoId} onClick={() => selectVideo(video)}
-                style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 12, padding: 12, display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'border-color 0.2s' }}>
-                {video.thumbnail && (
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <img src={video.thumbnail} alt="" style={{ width: 80, height: 45, objectFit: 'cover', borderRadius: 8 }} />
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#d0d0d0', lineHeight: 1.4, marginBottom: 6, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {video.title}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: 9, color: '#ff8800' }}>👁 {Number(video.viewCount).toLocaleString()}</span>
-                    <span style={{ fontSize: 9, color: '#44bb66' }}>👍 {video.likeCount}</span>
-                    <span style={{ fontSize: 9, background: video.tags?.length >= 10 ? '#001a08' : '#1a0a00', color: video.tags?.length >= 10 ? '#44bb66' : '#ff8800', border: `1px solid ${video.tags?.length >= 10 ? '#44bb6622' : '#ff880022'}`, borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>
-                      🏷 {video.tags?.length || 0}
-                    </span>
-                  </div>
-                </div>
-                <span style={{ color: '#2a2a2a', fontSize: 18, flexShrink: 0 }}>›</span>
-              </button>
-            ))}
-          </>
-        )}
-
-        {/* Tag Editor */}
-        {!credsLoading && selectedVideo && (
+        {/* Video Detail + Tag Editor */}
+        {selectedVideo && (
           <>
             <div style={{ background: '#0c0c0c', border: '1px solid #1e1400', borderRadius: 14, overflow: 'hidden' }}>
               {selectedVideo.thumbnail && (
-                <img src={selectedVideo.thumbnail} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'cover' }} />
+                <img src={selectedVideo.thumbnail} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
               )}
               <div style={{ padding: '12px 14px' }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#eee', lineHeight: 1.5, marginBottom: 8 }}>{selectedVideo.title}</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 10, color: '#ff8800' }}>👁 {Number(selectedVideo.viewCount).toLocaleString()}</span>
                   <span style={{ fontSize: 10, color: '#44bb66' }}>👍 {selectedVideo.likeCount}</span>
-                  <span style={{ fontSize: 9, background: '#0a0f0a', color: '#44bb6688', border: '1px solid #44bb6622', borderRadius: 8, padding: '1px 7px', fontWeight: 700 }}>📺 {channelTitle}</span>
+                  <span style={{ fontSize: 9, background: '#0f0f0f', color: '#555', border: '1px solid #222', borderRadius: 8, padding: '1px 7px', fontWeight: 700 }}>🆔 {selectedVideo.videoId}</span>
                 </div>
               </div>
             </div>
@@ -471,22 +292,65 @@ export default function DashboardPage() {
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={generateTags} disabled={generating}
-                  style={{ flex: 1, background: generating ? '#0a0a0a' : 'linear-gradient(135deg,#120a22,#0a0014)', border: `1px solid ${generating ? '#222' : '#8855cc44'}`, color: generating ? '#444' : '#aa77ee', borderRadius: 10, padding: '12px', fontSize: 12, fontWeight: 700, cursor: generating ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
+                  style={{ flex: 1, background: generating ? '#0a0a0a' : 'linear-gradient(135deg,#120a22,#0a0014)', border: `1px solid ${generating ? '#222' : '#8855cc44'}`, color: generating ? '#444' : '#aa77ee', borderRadius: 10, padding: '12px', fontSize: 12, fontWeight: 700, cursor: generating ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   {generating ? '⏳ Generating...' : '🤖 AI Generate'}
                 </button>
                 <button onClick={handleUpdate} disabled={saving || !isDirty}
-                  style={{ flex: 1, background: saving ? '#0a0a0a' : isDirty ? 'linear-gradient(135deg,#2a1000,#1a0500)' : '#0a0a0a', border: `1px solid ${saving ? '#222' : isDirty ? '#ff8c0055' : '#1a1a1a'}`, color: saving ? '#444' : isDirty ? '#ff8c00' : '#333', borderRadius: 10, padding: '12px', fontSize: 12, fontWeight: 700, cursor: saving || !isDirty ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
+                  style={{ flex: 1, background: saving ? '#0a0a0a' : isDirty ? 'linear-gradient(135deg,#2a1000,#1a0500)' : '#0a0a0a', border: `1px solid ${saving ? '#222' : isDirty ? '#ff8c0055' : '#1a1a1a'}`, color: saving ? '#444' : isDirty ? '#ff8c00' : '#333', borderRadius: 10, padding: '12px', fontSize: 12, fontWeight: 700, cursor: saving || !isDirty ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   {saving ? '⏳ Updating...' : '🚀 Update'}
                 </button>
               </div>
             </div>
+
+            {/* Fetch another */}
+            <button onClick={() => { setSelectedVideo(null); setTags(''); setUrlInput(''); setStatus('idle'); }}
+              style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', color: '#555', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              🔁 Doosra Video Fetch Karo
+            </button>
           </>
+        )}
+
+        {credsLoading && (
+          <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 12 }}>Loading...</div>
         )}
       </div>
 
-      <style>{`
-        @keyframes pulse { 0%,100% { opacity:0.5; } 50% { opacity:1; } }
-      `}</style>
+      <style>{`@keyframes pulse { 0%,100% { opacity:0.5; } 50% { opacity:1; } }`}</style>
+    </div>
+  );
+}
+
+function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
+  return (
+    <div style={{
+      position: 'sticky', top: 0, zIndex: 10,
+      background: 'rgba(8,8,8,0.95)', backdropFilter: 'blur(12px)',
+      borderBottom: '1px solid #161616',
+      padding: '0 16px', height: 52,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {showBack ? (
+          <button onClick={onBack}
+            style={{ background: 'none', border: 'none', color: '#666', fontSize: 13, cursor: 'pointer', padding: '4px 0', fontWeight: 700 }}>
+            ← Back
+          </button>
+        ) : (
+          <>
+            <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎬</div>
+            <span style={{ fontSize: 15, fontWeight: 900, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Tag Manager</span>
+          </>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <button onClick={onSettings}
+          style={{ background: '#141414', border: '1px solid #222', color: '#555', borderRadius: 8, width: 32, height: 32, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          ⚙️
+        </button>
+        {user?.user_metadata?.avatar_url && (
+          <img src={user.user_metadata.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #2a2a2a' }} />
+        )}
+      </div>
     </div>
   );
 }

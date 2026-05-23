@@ -24,7 +24,7 @@ async function handleOpenRouter(body, apiKey) {
     headers: {
       'Content-Type':  'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer':  'https://iswar-youtube-helper.vercel.app',
+      'HTTP-Referer':  'https://yt-tag-manager.vercel.app',
       'X-Title':       'Iswar YouTube Helper',
     },
     body: JSON.stringify({ ...body, stream: false }),

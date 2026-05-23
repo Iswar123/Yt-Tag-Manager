@@ -337,7 +337,7 @@ export default function DashboardPage() {
         )}
 
         {credsLoading && (
-
+          <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 12 }}>Loading...</div>
         )}
       </div>
 

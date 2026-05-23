@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 async function aiCall(prompt, provider, apiKey) {
-  const model = provider === 'groq' ? 'llama3-8b-8192' : 'openai/gpt-4o-mini';
+  const model = provider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-4o-mini';
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

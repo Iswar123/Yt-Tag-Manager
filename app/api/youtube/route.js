@@ -149,7 +149,16 @@ export async function PATCH(req) {
       {
         method:  'PUT',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: videoId, snippet: { ...currentSnippet, tags: tagsArray } }),
+        body: JSON.stringify({
+          id: videoId,
+          snippet: {
+            title:       currentSnippet.title,
+            description: currentSnippet.description,
+            categoryId:  currentSnippet.categoryId,
+            defaultLanguage: currentSnippet.defaultLanguage,
+            tags:        tagsArray,
+          },
+        }),
       }
     );
     const updateData = await updateRes.json();

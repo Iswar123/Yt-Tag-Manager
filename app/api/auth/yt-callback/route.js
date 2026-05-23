@@ -22,7 +22,7 @@ export async function GET(request) {
     }
 
     // Client ID + Secret env se aata hai — Supabase se nahi lena
-    const clientId     = process.env.NEXT_PUBLIC_YOUTUBE_CLIENT_ID;
+    const clientId     = process.env.YOUTUBE_CLIENT_ID;
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {

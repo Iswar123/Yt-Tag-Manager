@@ -70,12 +70,36 @@ async function getAccessToken(clientId, clientSecret, refreshToken) {
   return data.access_token;
 }
 
-// ── Fetch with API key fallback ───────────────────────────────────
-async function ytFetch(url, accessToken, apiKey) {
-  const res = await fetch(apiKey ? `${url}&key=${apiKey}` : url, {
+// ── Fetch helpers ─────────────────────────────────────────────────
+// OAuth only (for write ops & mine=true fallback)
+async function ytFetchOAuth(url, accessToken) {
+  return fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  return res;
+}
+
+// API key only (no OAuth header — avoids Google's mixed-credential error)
+async function ytFetchApiKey(url, apiKey) {
+  return fetch(`${url}${url.includes('?') ? '&' : '?'}key=${apiKey}`);
+}
+
+// Smart fetch: try API key first (if available), fallback to OAuth
+async function ytFetchSmart(url, accessToken, apiKey) {
+  if (apiKey) {
+    const res = await ytFetchApiKey(url, apiKey);
+    // quota exceeded → fallback to OAuth
+    if (res.status === 403) {
+      const data = await res.json();
+      const reason = data?.error?.errors?.[0]?.reason;
+      if (reason === 'quotaExceeded' || reason === 'keyInvalid' || reason === 'CONSUMER_INVALID') {
+        return { res: await ytFetchOAuth(url, accessToken), exhausted: true, data: null };
+      }
+      return { res, exhausted: false, data };
+    }
+    return { res, exhausted: false, data: null };
+  }
+  // No API key → sirf OAuth
+  return { res: await ytFetchOAuth(url, accessToken), exhausted: false, data: null };
 }
 
 export async function GET(req) {
@@ -83,25 +107,24 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const videoId = searchParams.get('videoId');
 
-    const { clientId, clientSecret, refreshToken, userId, supabase } = await getUserCredentials();
+    const { clientId, clientSecret, refreshToken, channelId, userId, supabase } = await getUserCredentials();
     const accessToken = await getAccessToken(clientId, clientSecret, refreshToken);
     const apiKey = await getRotatedApiKey(supabase, userId);
 
-    // ── Single video ──
+    // ── Single video fetch ────────────────────────────────────────
     if (videoId) {
-      let res = await ytFetch(
-        `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}`,
-        accessToken, apiKey
-      );
-      let data = await res.json();
+      const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}`;
+      let { res, exhausted, data } = await ytFetchSmart(url, accessToken, apiKey);
 
-      if (!res.ok && data?.error?.errors?.[0]?.reason === 'quotaExceeded' && apiKey) {
+      if (exhausted && apiKey) {
         await markKeyExhausted(supabase, userId, apiKey);
         const nextKey = await getRotatedApiKey(supabase, userId);
-        res  = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}`, accessToken, nextKey);
-        data = await res.json();
+        const fallback = await ytFetchSmart(url, accessToken, nextKey);
+        res  = fallback.res;
+        data = fallback.data;
       }
 
+      if (!data) data = await res.json();
       if (!res.ok) throw new Error(`YouTube API error: ${JSON.stringify(data?.error || data)}`);
 
       const video = data.items?.[0];
@@ -118,32 +141,64 @@ export async function GET(req) {
       });
     }
 
-    // ── Channel videos (latest 5) ──
-    let chRes  = await ytFetch('https://www.googleapis.com/youtube/v3/channels?part=contentDetails,snippet&mine=true', accessToken, apiKey);
-    let chData = await chRes.json();
+    // ── Channel info + recent videos ─────────────────────────────
+    // Channel fetch: use channelId with API key (avoids mine=true OAuth-only restriction)
+    // If no channelId saved yet, fallback to mine=true with OAuth
+    let chData;
 
-    if (!chRes.ok && chData?.error?.errors?.[0]?.reason === 'quotaExceeded' && apiKey) {
-      await markKeyExhausted(supabase, userId, apiKey);
-      const nextKey = await getRotatedApiKey(supabase, userId);
-      chRes  = await ytFetch('https://www.googleapis.com/youtube/v3/channels?part=contentDetails,snippet&mine=true', accessToken, nextKey);
-      chData = await chRes.json();
+    if (channelId && apiKey) {
+      // Best case: API key + channel ID (no OAuth header conflict)
+      const url = `https://www.googleapis.com/youtube/v3/channels?part=contentDetails,snippet,statistics&id=${channelId}`;
+      let { res, exhausted, data } = await ytFetchSmart(url, accessToken, apiKey);
+      if (exhausted && apiKey) {
+        await markKeyExhausted(supabase, userId, apiKey);
+        const nextKey = await getRotatedApiKey(supabase, userId);
+        const fallback = await ytFetchSmart(url, accessToken, nextKey);
+        res  = fallback.res;
+        data = fallback.data;
+      }
+      if (!data) data = await res.json();
+      if (res.ok) {
+        chData = data;
+      }
     }
-    if (!chRes.ok) throw new Error(`Channel fetch error: ${JSON.stringify(chData?.error)}`);
 
-    const uploadsId      = chData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-    const channelTitle   = chData.items?.[0]?.snippet?.title || 'My Channel';
-    const channelAvatar  = chData.items?.[0]?.snippet?.thumbnails?.default?.url || ''; // NEW
-    if (!uploadsId) throw new Error('Uploads playlist nahi mila');
+    if (!chData) {
+      // Fallback: OAuth only with mine=true (works even without channelId / API key)
+      const url = 'https://www.googleapis.com/youtube/v3/channels?part=contentDetails,snippet,statistics&mine=true';
+      const res  = await ytFetchOAuth(url, accessToken);
+      chData = await res.json();
+      if (!res.ok) throw new Error(`Channel fetch error: ${JSON.stringify(chData?.error)}`);
+    }
 
-    const plRes  = await ytFetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsId}&maxResults=5`, accessToken, apiKey);
-    const plData = await plRes.json();
+    const channelItem      = chData.items?.[0];
+    if (!channelItem) throw new Error('Channel nahi mila');
+
+    const uploadsId         = channelItem.contentDetails?.relatedPlaylists?.uploads;
+    const channelTitle      = channelItem.snippet?.title || 'My Channel';
+    const channelAvatar     = channelItem.snippet?.thumbnails?.medium?.url
+                           || channelItem.snippet?.thumbnails?.high?.url
+                           || channelItem.snippet?.thumbnails?.default?.url
+                           || '';
+    const subscriberCount   = channelItem.statistics?.subscriberCount || '0';
+    const subscriberHidden  = channelItem.statistics?.hiddenSubscriberCount || false;
+
+    if (!uploadsId) {
+      return Response.json({ videos: [], channelTitle, channelAvatar, subscriberCount, subscriberHidden });
+    }
+
+    // Recent 5 videos
+    const plUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsId}&maxResults=5`;
+    const { res: plRes, data: plDataRaw } = await ytFetchSmart(plUrl, accessToken, apiKey);
+    const plData = plDataRaw || await plRes.json();
     if (!plRes.ok) throw new Error(`Playlist error: ${JSON.stringify(plData?.error)}`);
 
     const videoIds = plData.items?.map(i => i.contentDetails?.videoId).filter(Boolean).join(',');
-    if (!videoIds) return Response.json({ videos: [], channelTitle, channelAvatar });
+    if (!videoIds) return Response.json({ videos: [], channelTitle, channelAvatar, subscriberCount, subscriberHidden });
 
-    const vRes  = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoIds}`, accessToken, apiKey);
-    const vData = await vRes.json();
+    const vUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoIds}`;
+    const { res: vRes, data: vDataRaw } = await ytFetchSmart(vUrl, accessToken, apiKey);
+    const vData = vDataRaw || await vRes.json();
     if (!vRes.ok) throw new Error(`Videos error: ${JSON.stringify(vData?.error)}`);
 
     const videos = vData.items?.map(v => ({
@@ -156,7 +211,7 @@ export async function GET(req) {
       categoryId: v.snippet?.categoryId || '10',
     })) || [];
 
-    return Response.json({ videos, channelTitle, channelAvatar }); // channelAvatar added
+    return Response.json({ videos, channelTitle, channelAvatar, subscriberCount, subscriberHidden });
 
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
@@ -176,9 +231,10 @@ export async function PATCH(req) {
     const { clientId, clientSecret, refreshToken } = await getUserCredentials();
     const accessToken = await getAccessToken(clientId, clientSecret, refreshToken);
 
-    const fetchRes  = await fetch(
+    // Snippet fetch — OAuth only (write scope)
+    const fetchRes  = await ytFetchOAuth(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      accessToken
     );
     const fetchData = await fetchRes.json();
     if (!fetchRes.ok) throw new Error(`Snippet fetch error: ${JSON.stringify(fetchData?.error)}`);
@@ -209,9 +265,9 @@ export async function PATCH(req) {
     }
 
     await new Promise(r => setTimeout(r, 1500));
-    const verifyRes  = await fetch(
+    const verifyRes  = await ytFetchOAuth(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      accessToken
     );
     const verifyData = await verifyRes.json();
     const updatedTags = verifyData.items?.[0]?.snippet?.tags || [];

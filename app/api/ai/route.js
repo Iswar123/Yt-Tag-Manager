@@ -37,7 +37,7 @@ async function handleOpenRouter(body, apiKey) {
 
 async function handleGroq(body, apiKey) {
   // Groq uses same OpenAI-compatible format
-  const model = body.model?.startsWith('groq/') ? body.model.replace('groq/', '') : 'llama3-8b-8192';
+  const model = body.model?.startsWith('groq/') ? body.model.replace('groq/', '') : (body.model || 'llama-3.3-70b-versatile');
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',

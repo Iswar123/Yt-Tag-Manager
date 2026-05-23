@@ -1,7 +1,7 @@
 // app/dashboard/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
@@ -45,10 +45,13 @@ export default function DashboardPage() {
   const [generating,    setGenerating]    = useState(false);
   const [status,        setStatus]        = useState('idle');
 
-  const [urlInput,      setUrlInput]      = useState('');
-  const [fetching,      setFetching]      = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [fetching, setFetching] = useState(false);
 
   const [toast, setToast] = useState({ msg: '', type: 'info' });
+
+  // Settings drawer
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const tagList  = tags.split(',').map(t => t.trim()).filter(Boolean);
   const tagCount = tagList.length;
@@ -73,7 +76,7 @@ export default function DashboardPage() {
       .eq('user_id', user.id)
       .single();
 
-    if (!data || !data.yt_refresh_token || !data.ai_api_key) {
+    if (!data || !data.yt_refresh_token || (!data.ai_api_key && !data.openrouter_api_key)) {
       setCreds(null);
       setCredsLoading(false);
       return;
@@ -107,13 +110,14 @@ export default function DashboardPage() {
 
   async function generateTags() {
     if (!selectedVideo) return;
-    if (!creds?.ai_api_key) { showToast('❌ AI key settings mein add karo!', 'error'); return; }
+    const activeKey = creds?.ai_provider === 'groq' ? creds?.ai_api_key : creds?.openrouter_api_key;
+    if (!activeKey) { showToast('❌ AI key settings mein add karo!', 'error'); return; }
     setGenerating(true);
     try {
       const text = await aiCall(
         `You are a YouTube SEO expert.\n\nVideo title: "${selectedVideo.title}"\nCurrent tags: ${(selectedVideo.tags || []).join(', ') || 'none'}\nViews: ${selectedVideo.viewCount} | Likes: ${selectedVideo.likeCount}\n\nGenerate exactly 16 viral SEO YouTube tags for this video.\nRULES:\n- Mix of relevant language keywords based on video title\n- Include topic-specific tags, general category tags\n- Each tag max 3-4 words\n- Comma separated list\n- No # symbol, no quotes\n- Focus on high-search-volume keywords\nReturn ONLY the comma-separated tags, nothing else.`,
         creds.ai_provider || 'openrouter',
-        creds.ai_api_key
+        activeKey
       );
       setTags(text.trim());
       showToast('🤖 AI tags ready! Check karo phir update karo.', 'success');
@@ -154,6 +158,18 @@ export default function DashboardPage() {
     router.push('/login');
   }
 
+  // Refresh creds after settings save
+  async function refreshCreds() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from('user_credentials')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+    if (data) setCreds(data);
+  }
+
   const toastColors = {
     success: { bg: '#001a0a', border: '#00cc6633', color: '#00cc66' },
     error:   { bg: '#1a0000', border: '#ff444433', color: '#ff6666' },
@@ -162,11 +178,10 @@ export default function DashboardPage() {
   };
   const tc = toastColors[toast.type] || toastColors.info;
 
-  // ── No credentials → Setup screen ──
   if (!credsLoading && !creds) {
     return (
       <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
-        <Topbar user={user} onSettings={() => router.push('/settings')} onLogout={handleLogout} />
+        <Topbar user={user} onSettings={() => setSettingsOpen(true)} onLogout={handleLogout} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ width: 80, height: 80, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, marginBottom: 28, boxShadow: '0 0 60px rgba(255,140,0,0.25)' }}>⚙️</div>
           <h2 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 900, color: '#eee' }}>Setup Karo Pehle</h2>
@@ -186,11 +201,19 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
-          <button onClick={() => router.push('/settings')}
+          <button onClick={() => setSettingsOpen(true)}
             style={{ marginTop: 20, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', border: 'none', color: '#fff', borderRadius: 14, padding: '14px 36px', fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 24px rgba(255,140,0,0.35)' }}>
             ⚙️ Settings Kholao
           </button>
         </div>
+        {settingsOpen && (
+          <SettingsDrawer
+            supabase={supabase}
+            user={user}
+            onClose={() => { setSettingsOpen(false); refreshCreds(); }}
+            showToast={showToast}
+          />
+        )}
       </div>
     );
   }
@@ -198,7 +221,6 @@ export default function DashboardPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Toast */}
       {toast.msg && (
         <div style={{
           position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
@@ -211,11 +233,16 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Topbar user={user} onSettings={() => router.push('/settings')} onLogout={handleLogout} showBack={!!selectedVideo} onBack={() => { setSelectedVideo(null); setTags(''); setUrlInput(''); setStatus('idle'); }} />
+      <Topbar
+        user={user}
+        onSettings={() => setSettingsOpen(true)}
+        onLogout={handleLogout}
+        showBack={!!selectedVideo}
+        onBack={() => { setSelectedVideo(null); setTags(''); setUrlInput(''); setStatus('idle'); }}
+      />
 
       <div style={{ flex: 1, padding: '14px 12px 40px', maxWidth: 600, margin: '0 auto', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* URL Input Box */}
         {!selectedVideo && (
           <div style={{ background: '#0c0c0c', border: '1px solid #1e1400', borderRadius: 14, padding: 14 }}>
             <div style={{ fontSize: 11, color: '#ff8c00', fontWeight: 800, marginBottom: 10, letterSpacing: '0.5px' }}>📹 VIDEO URL / ID</div>
@@ -228,7 +255,8 @@ export default function DashboardPage() {
             />
             <button onClick={handleFetch} disabled={fetching || !urlInput.trim()}
               style={{
-                width: '100%', padding: '13px', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: fetching || !urlInput.trim() ? 'not-allowed' : 'pointer',
+                width: '100%', padding: '13px', borderRadius: 10, fontSize: 13, fontWeight: 800,
+                cursor: fetching || !urlInput.trim() ? 'not-allowed' : 'pointer',
                 background: fetching || !urlInput.trim() ? '#0a0a0a' : 'linear-gradient(135deg,#ff8c00,#ff4400)',
                 border: fetching || !urlInput.trim() ? '1px solid #1a1a1a' : 'none',
                 color: fetching || !urlInput.trim() ? '#333' : '#fff',
@@ -239,7 +267,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Video Detail + Tag Editor */}
         {selectedVideo && (
           <>
             <div style={{ background: '#0c0c0c', border: '1px solid #1e1400', borderRadius: 14, overflow: 'hidden' }}>
@@ -302,7 +329,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Fetch another */}
             <button onClick={() => { setSelectedVideo(null); setTags(''); setUrlInput(''); setStatus('idle'); }}
               style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', color: '#555', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
               🔁 Doosra Video Fetch Karo
@@ -315,7 +341,411 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <style>{`@keyframes pulse { 0%,100% { opacity:0.5; } 50% { opacity:1; } }`}</style>
+      {settingsOpen && (
+        <SettingsDrawer
+          supabase={supabase}
+          user={user}
+          onClose={() => { setSettingsOpen(false); refreshCreds(); }}
+          showToast={showToast}
+        />
+      )}
+
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to   { transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── Settings Drawer ───────────────────────────────────────────────
+function SettingsDrawer({ supabase, user, onClose, showToast }) {
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+
+  const [form, setForm] = useState({
+    channel_id:          '',
+    yt_refresh_token:    '',
+    ai_provider:         'openrouter',
+    groq_api_key:        '',
+    openrouter_api_key:  '',
+  });
+
+  const [showGroqKey,       setShowGroqKey]       = useState(false);
+  const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
+  const [channelInfo,       setChannelInfo]       = useState({ name: '', avatar: '' });
+
+  // API Keys
+  const [apiKeys,    setApiKeys]    = useState([]);
+  const [newKey,     setNewKey]     = useState('');
+  const [newLabel,   setNewLabel]   = useState('');
+  const [addingKey,  setAddingKey]  = useState(false);
+  const [showAddKey, setShowAddKey] = useState(false);
+
+  const providerSaveTimer = useRef(null);
+
+  useEffect(() => { loadData(); loadApiKeys(); }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const { data } = await supabase
+      .from('user_credentials')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (data) {
+      setForm({
+        channel_id:         data.channel_id         || '',
+        yt_refresh_token:   data.yt_refresh_token   || '',
+        ai_provider:        data.ai_provider         || 'openrouter',
+        groq_api_key:       data.ai_api_key          || '',
+        openrouter_api_key: data.openrouter_api_key  || '',
+      });
+
+      if (data.yt_refresh_token) {
+        try {
+          const res    = await fetch('/api/youtube');
+          const ytData = await res.json();
+          if (ytData.channelTitle) {
+            setChannelInfo({ name: ytData.channelTitle, avatar: ytData.channelAvatar || '' });
+          }
+        } catch (_) {}
+      }
+    }
+    setLoading(false);
+  }
+
+  async function loadApiKeys() {
+    const res  = await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list' }) });
+    const data = await res.json();
+    if (data.keys) setApiKeys(data.keys);
+  }
+
+  // Auto-save provider on switch
+  async function handleProviderSwitch(provider) {
+    setForm(f => ({ ...f, ai_provider: provider }));
+    clearTimeout(providerSaveTimer.current);
+    providerSaveTimer.current = setTimeout(async () => {
+      await supabase.from('user_credentials').upsert({
+        user_id:     user.id,
+        ai_provider: provider,
+        updated_at:  new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      showToast('✅ Provider save ho gaya!', 'success');
+    }, 300);
+  }
+
+  // Save key on blur
+  async function handleKeyBlur(field) {
+    const upsertData = {
+      user_id:    user.id,
+      updated_at: new Date().toISOString(),
+    };
+    if (field === 'groq')       upsertData.ai_api_key         = form.groq_api_key;
+    if (field === 'openrouter') upsertData.openrouter_api_key = form.openrouter_api_key;
+
+    const { error } = await supabase
+      .from('user_credentials')
+      .upsert(upsertData, { onConflict: 'user_id' });
+
+    if (!error) showToast('✅ Key save ho gayi!', 'success');
+    else        showToast('❌ Save fail: ' + error.message, 'error');
+  }
+
+  async function handleDisconnect() {
+    await supabase.from('user_credentials').upsert({
+      user_id:          user.id,
+      yt_refresh_token: null,
+      channel_id:       null,
+      updated_at:       new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+    setForm(p => ({ ...p, yt_refresh_token: '', channel_id: '' }));
+    setChannelInfo({ name: '', avatar: '' });
+    showToast('🔌 YouTube disconnect ho gaya!', 'warn');
+  }
+
+  function handleConnectYouTube() {
+    const redirectUri = `${window.location.origin}/api/auth/yt-callback`;
+    const scope = encodeURIComponent([
+      'https://www.googleapis.com/auth/youtube',
+      'https://www.googleapis.com/auth/youtube.force-ssl',
+    ].join(' '));
+    const clientId = process.env.NEXT_PUBLIC_YOUTUBE_CLIENT_ID;
+    if (!clientId) { showToast('❌ Server config error', 'error'); return; }
+    window.location.href =
+      `https://accounts.google.com/o/oauth2/auth` +
+      `?client_id=${encodeURIComponent(clientId)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
+  }
+
+  async function handleAddKey() {
+    if (!newKey.trim()) { showToast('❌ API key daalo!', 'error'); return; }
+    setAddingKey(true);
+    const res  = await fetch('/api/youtube', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', api_key: newKey.trim(), label: newLabel.trim() || `Key ${apiKeys.length + 1}` }),
+    });
+    const data = await res.json();
+    if (data.error) showToast('❌ ' + data.error, 'error');
+    else { showToast('✅ Key add ho gayi!', 'success'); setNewKey(''); setNewLabel(''); setShowAddKey(false); loadApiKeys(); }
+    setAddingKey(false);
+  }
+
+  async function handleDeleteKey(id) {
+    await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', key_id: id }) });
+    showToast('🗑️ Key delete ho gayi', 'warn');
+    loadApiKeys();
+  }
+
+  async function handleReactivateKey(id) {
+    await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reactivate', key_id: id }) });
+    showToast('✅ Key reactivate ho gayi!', 'success');
+    loadApiKeys();
+  }
+
+  const ytConnected   = !!form.yt_refresh_token;
+  const displayAvatar = ytConnected && channelInfo.avatar ? channelInfo.avatar : user?.user_metadata?.avatar_url;
+  const displayName   = ytConnected && channelInfo.name   ? channelInfo.name   : user?.user_metadata?.full_name || 'User';
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, animation: 'fadeIn 0.2s ease' }}
+      />
+
+      {/* Drawer */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 101,
+        background: '#0a0a0a', borderTop: '1px solid #1e1e1e',
+        borderRadius: '20px 20px 0 0',
+        maxHeight: '88vh', overflowY: 'auto',
+        animation: 'slideUp 0.28s cubic-bezier(0.32,0.72,0,1)',
+        paddingBottom: 32,
+      }}>
+        {/* Handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
+          <div style={{ width: 36, height: 4, background: '#2a2a2a', borderRadius: 99 }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px 12px' }}>
+          <span style={{ fontSize: 15, fontWeight: 900, color: '#ff8c00' }}>⚙️ Settings</span>
+          <button onClick={onClose}
+            style={{ background: '#161616', border: '1px solid #2a2a2a', color: '#666', borderRadius: 8, width: 30, height: 30, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+            ✕
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 12 }}>Loading...</div>
+        ) : (
+          <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            {/* User info */}
+            <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              {displayAvatar ? (
+                <img src={displayAvatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${ytConnected ? '#ff8c0055' : '#ff8c0033'}` }} />
+              ) : (
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #ff8c0033', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>👤</div>
+              )}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd' }}>{displayName}</div>
+                <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>{user?.email}</div>
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
+                {ytConnected ? '✅ YT Connected' : '⬡ Not Connected'}
+              </div>
+            </div>
+
+            {/* YouTube Section */}
+            <DrawerSection title="🎬 YouTube">
+              {ytConnected ? (
+                <>
+                  <div style={{ background: '#001a08', border: '1px solid #00cc6622', borderRadius: 12, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 11, color: '#44bb66', fontWeight: 700, marginBottom: 8 }}>✅ YouTube Connected</div>
+                    {form.channel_id && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 10, color: '#444', fontWeight: 700, textTransform: 'uppercase' }}>Channel ID:</span>
+                        <span style={{ fontSize: 11, color: '#44bb6699', fontFamily: 'monospace', background: '#001208', border: '1px solid #44bb6618', borderRadius: 6, padding: '2px 8px' }}>{form.channel_id}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={handleConnectYouTube}
+                      style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: '#080f08', border: '1px solid #44bb6622', color: '#44bb6677' }}>
+                      🔄 Re-connect
+                    </button>
+                    <button onClick={handleDisconnect}
+                      style={{ flex: 1, padding: '11px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: '#100000', border: '1px solid #ff000022', color: '#ff4444' }}>
+                      🔌 Disconnect
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button onClick={handleConnectYouTube}
+                  style={{ width: '100%', padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', background: 'linear-gradient(135deg,#001a0a,#001408)', border: '1px solid #00cc6644', color: '#00cc66' }}>
+                  🔗 Connect YouTube
+                </button>
+              )}
+            </DrawerSection>
+
+            {/* AI Section — dono keys */}
+            <DrawerSection title="🤖 AI Settings">
+              {/* Provider toggle */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['openrouter', 'groq'].map(p => (
+                  <button key={p} onClick={() => handleProviderSwitch(p)}
+                    style={{
+                      flex: 1, padding: '10px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                      background: form.ai_provider === p ? (p === 'groq' ? '#001208' : '#120800') : '#0a0a0a',
+                      border: `1px solid ${form.ai_provider === p ? (p === 'groq' ? '#00cc6644' : '#ff8c0044') : '#1a1a1a'}`,
+                      color: form.ai_provider === p ? (p === 'groq' ? '#00cc66' : '#ff8c00') : '#333',
+                      transition: 'all 0.15s',
+                    }}>
+                    {p === 'openrouter' ? '🔶 OpenRouter' : '⚡ Groq'}
+                  </button>
+                ))}
+              </div>
+
+              {/* OpenRouter key */}
+              <div>
+                <div style={{ fontSize: 10, color: form.ai_provider === 'openrouter' ? '#ff8c00' : '#333', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px', transition: 'color 0.2s' }}>
+                  🔶 OpenRouter API Key {form.ai_provider === 'openrouter' && <span style={{ color: '#ff8c0066', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>← active</span>}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showOpenrouterKey ? 'text' : 'password'}
+                    value={form.openrouter_api_key}
+                    onChange={e => setForm(f => ({ ...f, openrouter_api_key: e.target.value }))}
+                    onBlur={() => handleKeyBlur('openrouter')}
+                    placeholder="sk-or-xxxxxxxxxxxx"
+                    style={{ ...inputStyle, paddingRight: 44, borderColor: form.ai_provider === 'openrouter' ? '#ff8c0033' : '#1e1e1e' }}
+                  />
+                  <button onClick={() => setShowOpenrouterKey(p => !p)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 14, padding: 4 }}>
+                    {showOpenrouterKey ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Groq key */}
+              <div>
+                <div style={{ fontSize: 10, color: form.ai_provider === 'groq' ? '#00cc66' : '#333', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px', transition: 'color 0.2s' }}>
+                  ⚡ Groq API Key {form.ai_provider === 'groq' && <span style={{ color: '#00cc6666', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>← active</span>}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showGroqKey ? 'text' : 'password'}
+                    value={form.groq_api_key}
+                    onChange={e => setForm(f => ({ ...f, groq_api_key: e.target.value }))}
+                    onBlur={() => handleKeyBlur('groq')}
+                    placeholder="gsk_xxxxxxxxxxxx"
+                    style={{ ...inputStyle, paddingRight: 44, borderColor: form.ai_provider === 'groq' ? '#00cc6633' : '#1e1e1e' }}
+                  />
+                  <button onClick={() => setShowGroqKey(p => !p)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 14, padding: 4 }}>
+                    {showGroqKey ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ background: '#080808', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#2a2a2a', lineHeight: 1.6 }}>
+                Active model:{' '}
+                <span style={{ color: form.ai_provider === 'groq' ? '#00cc6655' : '#ff8c0055' }}>
+                  {form.ai_provider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-4o-mini'}
+                </span>
+              </div>
+            </DrawerSection>
+
+            {/* YouTube API Keys */}
+            <DrawerSection title="🔑 YouTube API Keys (Quota Rotation)">
+              <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7, background: '#0a0a0a', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px' }}>
+                💡 Multiple projects ke API keys add karo — quota khatam hone par automatically next key use hogi
+              </div>
+
+              {apiKeys.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {apiKeys.map(k => (
+                    <div key={k.id} style={{ background: '#0a0a0a', border: `1px solid ${k.is_active ? '#ff8c0018' : '#ff000018'}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: k.is_active ? '#ff8c00' : '#ff4444', marginBottom: 2 }}>
+                          {k.is_active ? '🟢' : '🔴'} {k.label}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#333' }}>
+                          Used: {k.use_count || 0} times
+                          {k.exhausted_at && <span style={{ color: '#ff4444', marginLeft: 6 }}>• Quota exhausted</span>}
+                          {k.last_used_at && <span style={{ marginLeft: 6 }}>• Last: {new Date(k.last_used_at).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {!k.is_active && (
+                          <button onClick={() => handleReactivateKey(k.id)}
+                            style={{ background: '#001a08', border: '1px solid #44bb6622', color: '#44bb66', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                            ↺ Reset
+                          </button>
+                        )}
+                        <button onClick={() => handleDeleteKey(k.id)}
+                          style={{ background: '#100000', border: '1px solid #ff000022', color: '#ff4444', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showAddKey ? (
+                <div style={{ background: '#0c0c0c', border: '1px solid #252525', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (e.g. Project 1)" style={{ ...inputStyle, fontSize: 12 }} />
+                  <input value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="AIza... (YouTube Data API v3 key)" style={{ ...inputStyle, fontSize: 12, fontFamily: 'monospace' }} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={handleAddKey} disabled={addingKey}
+                      style={{ flex: 1, background: addingKey ? '#0a0a0a' : 'linear-gradient(135deg,#ff8c00,#ff4400)', border: 'none', color: addingKey ? '#333' : '#fff', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 700, cursor: addingKey ? 'not-allowed' : 'pointer' }}>
+                      {addingKey ? '⏳ Adding...' : '✅ Add Key'}
+                    </button>
+                    <button onClick={() => { setShowAddKey(false); setNewKey(''); setNewLabel(''); }}
+                      style={{ background: '#0a0a0a', border: '1px solid #222', color: '#555', borderRadius: 8, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setShowAddKey(true)}
+                  style={{ width: '100%', background: '#0a0a0a', border: '1px solid #ff8c0022', color: '#ff8c0066', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  + Naya API Key Add Karo
+                </button>
+              )}
+            </DrawerSection>
+
+            {/* Logout */}
+            <button
+              onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }}
+              style={{ width: '100%', background: '#100000', border: '1px solid #ff000022', color: '#ff4444', borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+              🚪 Logout
+            </button>
+
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function DrawerSection({ title, children }) {
+  return (
+    <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 900, color: '#ff8c00', letterSpacing: '0.3px' }}>{title}</div>
+      {children}
     </div>
   );
 }
@@ -354,3 +784,9 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
     </div>
   );
 }
+
+const inputStyle = {
+  width: '100%', background: '#080808', border: '1px solid #1e1e1e',
+  borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#ddd',
+  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+};

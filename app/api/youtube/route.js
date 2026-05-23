@@ -33,12 +33,10 @@ async function getRotatedApiKey(supabase, userId) {
     .eq('is_active', true)
     .order('last_used_at', { ascending: true, nullsFirst: true });
 
-  if (!keys || keys.length === 0) return null; // No keys — OAuth only mode
+  if (!keys || keys.length === 0) return null;
 
-  // Pick least recently used key
   const key = keys[0];
 
-  // Update last_used_at
   await supabase
     .from('yt_api_keys')
     .update({ last_used_at: new Date().toISOString(), use_count: (key.use_count || 0) + 1 })
@@ -74,7 +72,6 @@ async function getAccessToken(clientId, clientSecret, refreshToken) {
 
 // ── Fetch with API key fallback ───────────────────────────────────
 async function ytFetch(url, accessToken, apiKey) {
-  // Try with OAuth token first
   const res = await fetch(apiKey ? `${url}&key=${apiKey}` : url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -98,7 +95,6 @@ export async function GET(req) {
       );
       let data = await res.json();
 
-      // If quota exceeded, mark key exhausted and try next
       if (!res.ok && data?.error?.errors?.[0]?.reason === 'quotaExceeded' && apiKey) {
         await markKeyExhausted(supabase, userId, apiKey);
         const nextKey = await getRotatedApiKey(supabase, userId);
@@ -134,8 +130,9 @@ export async function GET(req) {
     }
     if (!chRes.ok) throw new Error(`Channel fetch error: ${JSON.stringify(chData?.error)}`);
 
-    const uploadsId    = chData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-    const channelTitle = chData.items?.[0]?.snippet?.title || 'My Channel';
+    const uploadsId      = chData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    const channelTitle   = chData.items?.[0]?.snippet?.title || 'My Channel';
+    const channelAvatar  = chData.items?.[0]?.snippet?.thumbnails?.default?.url || ''; // NEW
     if (!uploadsId) throw new Error('Uploads playlist nahi mila');
 
     const plRes  = await ytFetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsId}&maxResults=5`, accessToken, apiKey);
@@ -143,7 +140,7 @@ export async function GET(req) {
     if (!plRes.ok) throw new Error(`Playlist error: ${JSON.stringify(plData?.error)}`);
 
     const videoIds = plData.items?.map(i => i.contentDetails?.videoId).filter(Boolean).join(',');
-    if (!videoIds) return Response.json({ videos: [], channelTitle });
+    if (!videoIds) return Response.json({ videos: [], channelTitle, channelAvatar });
 
     const vRes  = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoIds}`, accessToken, apiKey);
     const vData = await vRes.json();
@@ -159,7 +156,7 @@ export async function GET(req) {
       categoryId: v.snippet?.categoryId || '10',
     })) || [];
 
-    return Response.json({ videos, channelTitle });
+    return Response.json({ videos, channelTitle, channelAvatar }); // channelAvatar added
 
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
@@ -211,7 +208,6 @@ export async function PATCH(req) {
       throw new Error(updateData?.error?.message || JSON.stringify(updateData?.error) || 'YouTube update fail');
     }
 
-    // Verify tags actually saved
     await new Promise(r => setTimeout(r, 1500));
     const verifyRes  = await fetch(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}`,
@@ -244,9 +240,9 @@ export async function POST(req) {
     if (action === 'add') {
       if (!api_key) return Response.json({ error: 'API key required' }, { status: 400 });
       const { error } = await supabase.from('yt_api_keys').insert({
-        user_id:  user.id,
+        user_id:   user.id,
         api_key,
-        label:    label || `Key ${Date.now()}`,
+        label:     label || `Key ${Date.now()}`,
         is_active: true,
       });
       if (error) throw new Error(error.message);

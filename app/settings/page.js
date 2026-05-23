@@ -33,7 +33,14 @@ function SettingsInner() {
   const [showToken, setShowToken] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
 
-  useEffect(() => { loadData(); }, []);
+  // API Keys state
+  const [apiKeys,    setApiKeys]    = useState([]);
+  const [newKey,     setNewKey]     = useState('');
+  const [newLabel,   setNewLabel]   = useState('');
+  const [addingKey,  setAddingKey]  = useState(false);
+  const [showAddKey, setShowAddKey] = useState(false);
+
+  useEffect(() => { loadData(); loadApiKeys(); }, []);
 
   // Handle redirect back from Google OAuth
   useEffect(() => {
@@ -115,6 +122,37 @@ function SettingsInner() {
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push('/login');
+  }
+
+  async function loadApiKeys() {
+    const res = await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list' }) });
+    const data = await res.json();
+    if (data.keys) setApiKeys(data.keys);
+  }
+
+  async function handleAddKey() {
+    if (!newKey.trim()) { showToast('❌ API key daalo!', 'error'); return; }
+    setAddingKey(true);
+    const res = await fetch('/api/youtube', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', api_key: newKey.trim(), label: newLabel.trim() || `Key ${apiKeys.length + 1}` }),
+    });
+    const data = await res.json();
+    if (data.error) showToast('❌ ' + data.error, 'error');
+    else { showToast('✅ API key add ho gaya!', 'success'); setNewKey(''); setNewLabel(''); setShowAddKey(false); loadApiKeys(); }
+    setAddingKey(false);
+  }
+
+  async function handleDeleteKey(id) {
+    await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', key_id: id }) });
+    showToast('🗑️ Key delete ho gayi', 'warn');
+    loadApiKeys();
+  }
+
+  async function handleReactivateKey(id) {
+    await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reactivate', key_id: id }) });
+    showToast('✅ Key reactivate ho gayi!', 'success');
+    loadApiKeys();
   }
 
   async function handleDisconnect() {
@@ -305,6 +343,78 @@ function SettingsInner() {
               {form.ai_provider === 'groq' ? 'llama-3.3-70b-versatile (free tier available)' : 'openai/gpt-4o-mini'}
             </span>
           </div>
+        </Section>
+
+        {/* YouTube API Keys Section */}
+        <Section title="🔑 YouTube API Keys (Quota Rotation)">
+          <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7, background: '#0a0a0a', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px' }}>
+            💡 Google Cloud Console se multiple projects ke API keys add karo — quota khatam hone par automatically next key use hogi
+          </div>
+
+          {/* Existing keys list */}
+          {apiKeys.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {apiKeys.map(k => (
+                <div key={k.id} style={{ background: '#0a0a0a', border: `1px solid ${k.is_active ? '#ff8c0018' : '#ff000018'}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: k.is_active ? '#ff8c00' : '#ff4444', marginBottom: 2 }}>
+                      {k.is_active ? '🟢' : '🔴'} {k.label}
+                    </div>
+                    <div style={{ fontSize: 9, color: '#333' }}>
+                      Used: {k.use_count || 0} times
+                      {k.exhausted_at && <span style={{ color: '#ff4444', marginLeft: 6 }}>• Quota exhausted</span>}
+                      {k.last_used_at && <span style={{ marginLeft: 6 }}>• Last: {new Date(k.last_used_at).toLocaleDateString()}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {!k.is_active && (
+                      <button onClick={() => handleReactivateKey(k.id)}
+                        style={{ background: '#001a08', border: '1px solid #44bb6622', color: '#44bb66', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                        ↺ Reset
+                      </button>
+                    )}
+                    <button onClick={() => handleDeleteKey(k.id)}
+                      style={{ background: '#100000', border: '1px solid #ff000022', color: '#ff4444', borderRadius: 6, padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add new key */}
+          {showAddKey ? (
+            <div style={{ background: '#0c0c0c', border: '1px solid #252525', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input
+                value={newLabel}
+                onChange={e => setNewLabel(e.target.value)}
+                placeholder="Label (e.g. Project 1, Project 2)"
+                style={{ ...inputStyle, fontSize: 12 }}
+              />
+              <input
+                value={newKey}
+                onChange={e => setNewKey(e.target.value)}
+                placeholder="AIza... (YouTube Data API v3 key)"
+                style={{ ...inputStyle, fontSize: 12, fontFamily: 'monospace' }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleAddKey} disabled={addingKey}
+                  style={{ flex: 1, background: addingKey ? '#0a0a0a' : 'linear-gradient(135deg,#ff8c00,#ff4400)', border: 'none', color: addingKey ? '#333' : '#fff', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 700, cursor: addingKey ? 'not-allowed' : 'pointer' }}>
+                  {addingKey ? '⏳ Adding...' : '✅ Add Key'}
+                </button>
+                <button onClick={() => { setShowAddKey(false); setNewKey(''); setNewLabel(''); }}
+                  style={{ background: '#0a0a0a', border: '1px solid #222', color: '#555', borderRadius: 8, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowAddKey(true)}
+              style={{ width: '100%', background: '#0a0a0a', border: '1px solid #ff8c0022', color: '#ff8c0066', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              + Naya API Key Add Karo
+            </button>
+          )}
         </Section>
 
         {/* Save */}

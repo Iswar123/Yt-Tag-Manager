@@ -1,11 +1,19 @@
 // app/settings/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#080808' }} />}>
+      <SettingsInner />
+    </Suspense>
+  );
+}
+
+function SettingsInner() {
   const supabase     = createClient();
   const router       = useRouter();
   const searchParams = useSearchParams();

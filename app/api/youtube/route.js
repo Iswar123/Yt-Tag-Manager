@@ -146,6 +146,15 @@ export async function GET(req) {
       const video = data.items?.[0];
       if (!video) return Response.json({ error: 'Video nahi mila' }, { status: 404 });
 
+      // ── Channel ownership check ───────────────────────────────
+      // Video ka channelId active channel se match karna chahiye
+      if (channelId && video.snippet?.channelId && video.snippet.channelId !== channelId) {
+        return Response.json(
+          { error: '⚠️ Ye video active channel ka nahi hai — pehle sahi channel switch karo Settings mein' },
+          { status: 403 }
+        );
+      }
+
       // Track quota — +1 only if OAuth was used
       if (usedOAuth) await addQuotaUnits(supabase, userId, 1);
 
@@ -157,6 +166,7 @@ export async function GET(req) {
         viewCount:  video.statistics?.viewCount || 0,
         likeCount:  video.statistics?.likeCount || 0,
         categoryId: video.snippet?.categoryId || '10',
+        channelId:  video.snippet?.channelId || '',
       });
     }
 
@@ -204,7 +214,6 @@ export async function GET(req) {
     const subscriberHidden = channelItem.statistics?.hiddenSubscriberCount || false;
 
     if (!uploadsId) {
-      // Only count channel call
       if (channelUsedOAuth) await addQuotaUnits(supabase, userId, 1);
       return Response.json({ videos: [], channelTitle, channelAvatar, subscriberCount, subscriberHidden });
     }
@@ -228,7 +237,6 @@ export async function GET(req) {
     const vData = vDataRaw || await vRes.json();
     if (!vRes.ok) throw new Error(`Videos error: ${JSON.stringify(vData?.error)}`);
 
-    // Track all OAuth calls made during channel load
     let totalOAuthUnits = 0;
     if (channelUsedOAuth) totalOAuthUnits += 1;
     if (plUsedOAuth)      totalOAuthUnits += 1;
@@ -262,7 +270,7 @@ export async function PATCH(req) {
       ? tags.split(',').map(t => t.trim()).filter(Boolean)
       : tags;
 
-    const { clientId, clientSecret, refreshToken, userId, supabase } = await getUserCredentials();
+    const { clientId, clientSecret, refreshToken, channelId, userId, supabase } = await getUserCredentials();
     const accessToken = await getAccessToken(clientId, clientSecret, refreshToken);
 
     // Snippet fetch — OAuth only (+1)
@@ -275,6 +283,15 @@ export async function PATCH(req) {
 
     const currentSnippet = fetchData.items?.[0]?.snippet;
     if (!currentSnippet) return Response.json({ error: 'Video nahi mila' }, { status: 404 });
+
+    // ── Channel ownership check ───────────────────────────────────
+    // Video ka channelId active channel se match karna chahiye
+    if (channelId && currentSnippet.channelId && currentSnippet.channelId !== channelId) {
+      return Response.json(
+        { error: '⚠️ Ye video active channel ka nahi hai — pehle sahi channel switch karo Settings mein' },
+        { status: 403 }
+      );
+    }
 
     // Tags update — OAuth (+50)
     const updateRes = await fetch(

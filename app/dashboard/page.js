@@ -64,7 +64,6 @@ function QuotaBar({ used }) {
   const pct   = Math.min((used / TOTAL) * 100, 100);
   const color = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
 
-  // PT mein current H/M/S nikalo Intl se (reliable, DST-safe)
   const now  = new Date();
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Los_Angeles',
@@ -74,8 +73,10 @@ function QuotaBar({ used }) {
   const ptMi = parseInt(parts.find(p => p.type === 'minute').value);
   const ptS  = parseInt(parts.find(p => p.type === 'second').value);
 
-  // Midnight tak kitne seconds bacha
-  const secsLeft = (23 - ptH) * 3600 + (59 - ptMi) * 60 + (60 - ptS);
+  // PT mein abhi kitne seconds ho chuke hain aaj
+  const secsDone = ptH * 3600 + ptMi * 60 + ptS;
+  // Ek din = 86400 seconds, toh next midnight tak bacha
+  const secsLeft = 86400 - secsDone;
   const hh = Math.floor(secsLeft / 3600);
   const mm = Math.floor((secsLeft % 3600) / 60);
 

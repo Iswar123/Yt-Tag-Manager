@@ -20,7 +20,7 @@ export async function GET(request) {
     if (!clientId || !clientSecret) return NextResponse.redirect(`${origin}/dashboard?yt_error=env_missing`);
 
     // Step 1: Code → Tokens
-    const tokenRes  = await fetch('https://oauth2.googleapis.com/token', {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -36,45 +36,67 @@ export async function GET(request) {
     if (tokenData.error)          return NextResponse.redirect(`${origin}/dashboard?yt_error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`);
     if (!tokenData.refresh_token) return NextResponse.redirect(`${origin}/dashboard?yt_error=no_refresh_token`);
 
-    // Step 2: Is Gmail se saare channels fetch karo
-    let channels = [];
+    // Step 2: Is account ke channels fetch karo
+    let newChannels = [];
     try {
-      const chRes  = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true&maxResults=50', {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` },
-      });
+      const chRes  = await fetch(
+        'https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true&maxResults=50',
+        { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
+      );
       const chData = await chRes.json();
-      channels = (chData.items || []).map(ch => ({
+      newChannels = (chData.items || []).map(ch => ({
         channel_id: ch.id,
         title:      ch.snippet?.title || '',
         avatar_url: ch.snippet?.thumbnails?.medium?.url || ch.snippet?.thumbnails?.default?.url || '',
       }));
     } catch (_) {}
 
-    const firstChannelId = channels[0]?.channel_id || null;
-
-    // Step 3: Token save karo user_credentials mein
+    // Step 3: Token save — latest refresh_token store karo
+    // channel_id = pehla naya channel (active hoga)
+    const firstNewChannelId = newChannels[0]?.channel_id || null;
     await supabase
       .from('user_credentials')
       .upsert({
         user_id:          user.id,
         yt_refresh_token: tokenData.refresh_token,
-        channel_id:       firstChannelId,
+        channel_id:       firstNewChannelId,
         updated_at:       new Date().toISOString(),
       }, { onConflict: 'user_id' });
 
-    // Step 4: user_channels mein saare channels save karo
-    // Pehle existing channels delete karo
-    await supabase.from('user_channels').delete().eq('user_id', user.id);
+    // Step 4: Existing channels fetch karo — MERGE karo, delete mat karo
+    const { data: existingChannels } = await supabase
+      .from('user_channels')
+      .select('channel_id')
+      .eq('user_id', user.id);
 
-    if (channels.length > 0) {
-      const rows = channels.map((ch, i) => ({
+    const existingIds = new Set((existingChannels || []).map(c => c.channel_id));
+
+    // Pehle sab is_active = false karo
+    await supabase
+      .from('user_channels')
+      .update({ is_active: false })
+      .eq('user_id', user.id);
+
+    // Naye channels insert karo (jo pehle se hain unhe skip karo)
+    const toInsert = newChannels.filter(ch => !existingIds.has(ch.channel_id));
+    if (toInsert.length > 0) {
+      const rows = toInsert.map(ch => ({
         user_id:    user.id,
         channel_id: ch.channel_id,
         title:      ch.title,
         avatar_url: ch.avatar_url,
-        is_active:  i === 0, // pehla channel default active
+        is_active:  false,
       }));
       await supabase.from('user_channels').insert(rows);
+    }
+
+    // Naye connected channel ko active mark karo
+    if (firstNewChannelId) {
+      await supabase
+        .from('user_channels')
+        .update({ is_active: true })
+        .eq('user_id', user.id)
+        .eq('channel_id', firstNewChannelId);
     }
 
     return NextResponse.redirect(`${origin}/dashboard?yt_connected=true`);

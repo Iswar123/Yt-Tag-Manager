@@ -835,9 +835,12 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 {displayAvatar ? (
-                  <img src={displayAvatar} alt="" style={{ width: 44, height: 44, borderRadius: '50%', border: `2px solid ${ytConnected ? '#ff8c0055' : '#333'}`, display: 'block' }} />
+                  <img src={displayAvatar} alt="" style={{ width: 44, height: 44, borderRadius: '50%', border: `2px solid ${ytConnected ? '#44bb66' : '#333'}`, display: 'block' }} />
                 ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>👤</div>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#1a1a1a', border: `2px solid ${ytConnected ? '#44bb66' : '#333'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>👤</div>
+                )}
+                {ytConnected && (
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: '50%', background: '#44bb66', border: '2px solid #0a0a0a' }} />
                 )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -850,17 +853,12 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     : user?.email}
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
-                  {ytConnected ? '✅ Connected' : '⬡ Not Connected'}
-                </div>
-                {ytConnected && channels.length > 1 && (
-                  <button onClick={() => setShowChannelSwitcher(true)}
-                    style={{ fontSize: 9, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: '#ff8c00', background: '#120800', border: '1px solid #ff8c0033', cursor: 'pointer' }}>
-                    ⇄ Switch Channel
-                  </button>
-                )}
-              </div>
+              {ytConnected && channels.length > 1 && (
+                <button onClick={() => setShowChannelSwitcher(true)}
+                  style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '5px 12px', color: '#ff8c00', background: '#120800', border: '1px solid #ff8c0044', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  ⇄ Switch
+                </button>
+              )}
             </div>
           )}
 

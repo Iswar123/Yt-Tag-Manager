@@ -1,7 +1,7 @@
 // app/admin/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
@@ -15,25 +15,35 @@ export default function AdminPanel() {
   const supabase = createClient();
   const router   = useRouter();
 
-  const [section,      setSection]      = useState('overview');
-  const [sidebarOpen,  setSidebarOpen]  = useState(false);
-  const [loading,      setLoading]      = useState(true);
-  const [users,        setUsers]        = useState([]);
-  const [stats,        setStats]        = useState(null);
-  const [toast,        setToast]        = useState({ msg: '', type: 'info' });
-  const [editingUser,  setEditingUser]  = useState(null);
-  const [savingLimit,  setSavingLimit]  = useState(false);
-  const [search,       setSearch]       = useState('');
-  const [filter,       setFilter]       = useState('all');
-  const [adminUser,    setAdminUser]    = useState(null);
+  const [section,     setSection]     = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loading,     setLoading]     = useState(true);
+  const [users,       setUsers]       = useState([]);
+  const [stats,       setStats]       = useState(null);
+  const [toast,       setToast]       = useState({ msg: '', type: 'info' });
+  const [editingUser, setEditingUser] = useState(null);
+  const [savingLimit, setSavingLimit] = useState(false);
+  const [search,      setSearch]      = useState('');
+  const [filter,      setFilter]      = useState('all');
+  const [adminUser,   setAdminUser]   = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
 
   useEffect(() => {
     loadAll();
     supabase.auth.getUser().then(({ data: { user } }) => setAdminUser(user));
   }, []);
 
-  // Close sidebar on section change (mobile)
   useEffect(() => { setSidebarOpen(false); }, [section]);
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false);
+    }
+    if (profileOpen) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [profileOpen]);
 
   async function loadAll() {
     setLoading(true);
@@ -44,10 +54,11 @@ export default function AdminPanel() {
       ]);
       const usersData = await usersRes.json();
       const statsData = await statsRes.json();
-      if (usersData.users) setUsers(usersData.users);
+      if (usersData.error) showToast('❌ Users: ' + usersData.error, 'error');
+      else if (usersData.users) setUsers(usersData.users);
       if (!statsData.error) setStats(statsData);
     } catch (e) {
-      showToast('❌ Load fail: ' + e.message, 'error');
+      showToast('❌ Load failed: ' + e.message, 'error');
     }
     setLoading(false);
   }
@@ -87,7 +98,7 @@ export default function AdminPanel() {
     const data = await res.json();
     if (data.error) showToast('❌ ' + data.error, 'error');
     else {
-      showToast('✅ Limits save ho gayi!', 'success');
+      showToast('✅ Limits saved!', 'success');
       setUsers(prev => prev.map(u => u.id === editingUser.id
         ? { ...u, daily_limit: editingUser.daily_limit, total_limit: editingUser.total_limit } : u));
       setEditingUser(null);
@@ -103,7 +114,7 @@ export default function AdminPanel() {
     });
     const data = await res.json();
     if (data.error) { showToast('❌ ' + data.error, 'error'); return; }
-    showToast('🔄 Usage reset ho gaya!', 'success');
+    showToast('🔄 Usage reset!', 'success');
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, daily_used: 0, total_used: 0 } : u));
   }
 
@@ -128,6 +139,10 @@ export default function AdminPanel() {
   };
   const tc = toastColors[toast.type] || toastColors.info;
 
+  const avatar = adminUser?.user_metadata?.avatar_url;
+  const name   = adminUser?.user_metadata?.full_name || 'Admin';
+  const email  = adminUser?.email || '';
+
   return (
     <div style={{
       minHeight: '100vh', background: '#060606',
@@ -141,6 +156,7 @@ export default function AdminPanel() {
         .action-btn:hover { opacity: 0.85; transform: translateY(-1px); }
         .user-card:hover  { border-color: #252525 !important; }
         .nav-item:hover   { background: #111 !important; }
+        .profile-menu-btn:hover { background: #161616 !important; }
       `}</style>
 
       {/* Toast */}
@@ -171,8 +187,8 @@ export default function AdminPanel() {
             <div style={{ fontSize: 11, color: '#444', marginBottom: 20 }}>{editingUser.email}</div>
 
             {[
-              { key: 'daily_limit', label: 'Daily Limit (per din reset)', max: 9999 },
-              { key: 'total_limit', label: 'Total Lifetime Limit',        max: 99999 },
+              { key: 'daily_limit', label: 'Daily Limit (resets every day)', max: 9999 },
+              { key: 'total_limit', label: 'Total Lifetime Limit',           max: 99999 },
             ].map(({ key, label, max }) => (
               <div key={key} style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 10, color: '#555', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6 }}>{label}</div>
@@ -216,7 +232,7 @@ export default function AdminPanel() {
 
       {/* Sidebar */}
       <div style={{
-        position: 'fixed', top: 0, left: 0, bottom: 0, width: 240,
+        position: 'fixed', top: 0, left: 0, bottom: 0, width: 220,
         background: '#0a0a0a', borderRight: '1px solid #111',
         zIndex: 50, display: 'flex', flexDirection: 'column',
         transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
@@ -240,26 +256,7 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* Admin info */}
-        {adminUser && (
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #0e0e0e' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {adminUser.user_metadata?.avatar_url ? (
-                <img src={adminUser.user_metadata.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #ff8c0044' }} />
-              ) : (
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#161616', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>👤</div>
-              )}
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#ff8c00', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {adminUser.user_metadata?.full_name || 'Admin'}
-                </div>
-                <div style={{ fontSize: 9, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{adminUser.email}</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Nav Items */}
+        {/* Nav Items — only Overview, Users, Activity. NO Dashboard button */}
         <nav style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {SECTIONS.map(s => (
             <button
@@ -286,15 +283,8 @@ export default function AdminPanel() {
           ))}
         </nav>
 
-        {/* Sidebar Footer */}
-        <div style={{ padding: '12px 8px', borderTop: '1px solid #0e0e0e', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <button onClick={() => router.push('/dashboard')} style={{
-            width: '100%', padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700,
-            background: 'transparent', border: '1px solid #161616', color: '#444',
-            cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <span>🏠</span> Dashboard
-          </button>
+        {/* Sidebar Footer — only logout, NO dashboard button */}
+        <div style={{ padding: '12px 8px', borderTop: '1px solid #0e0e0e' }}>
           <button onClick={handleLogout} style={{
             width: '100%', padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700,
             background: '#100000', border: '1px solid #ff000022', color: '#ff4444',
@@ -305,10 +295,10 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* Top Bar */}
+      {/* ── Top Bar ── */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 30,
-        background: 'rgba(6,6,6,0.96)', backdropFilter: 'blur(16px)',
+        background: 'rgba(6,6,6,0.97)', backdropFilter: 'blur(16px)',
         borderBottom: '1px solid #0e0e0e',
         height: 52, padding: '0 16px',
         display: 'flex', alignItems: 'center', gap: 12,
@@ -334,30 +324,95 @@ export default function AdminPanel() {
           ))}
         </button>
 
-        {/* Current Section Title */}
+        {/* Section Title */}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 900, color: '#eee' }}>
             {SECTIONS.find(s => s.id === section)?.icon} {SECTIONS.find(s => s.id === section)?.label}
           </div>
         </div>
 
+        {/* Refresh */}
         <button onClick={loadAll} style={{
           background: '#0e0e0e', border: '1px solid #1a1a1a', color: '#444',
           borderRadius: 8, padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
         }}>🔄</button>
+
+        {/* ── Google-style Profile Avatar + Dropdown ── */}
+        <div ref={profileRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setProfileOpen(p => !p)}
+            style={{
+              background: 'none', border: `2px solid ${profileOpen ? '#ff8c00' : '#2a2a2a'}`,
+              padding: 0, cursor: 'pointer', borderRadius: '50%',
+              width: 34, height: 34, overflow: 'hidden',
+              transition: 'border-color 0.15s', flexShrink: 0,
+            }}
+          >
+            {avatar ? (
+              <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            ) : (
+              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#ff8c00,#ff4400)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff', fontWeight: 700 }}>
+                {name.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </button>
+
+          {/* Dropdown */}
+          {profileOpen && (
+            <div style={{
+              position: 'absolute', top: 42, right: 0,
+              background: '#0e0e0e', border: '1px solid #222',
+              borderRadius: 16, width: 230, zIndex: 100,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.8)',
+              animation: 'fadeIn 0.15s ease', overflow: 'hidden',
+            }}>
+              {/* Profile Info */}
+              <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid #181818', textAlign: 'center' }}>
+                {avatar ? (
+                  <img src={avatar} alt="" style={{ width: 56, height: 56, borderRadius: '50%', border: '2px solid #ff8c0055', margin: '0 auto 10px', display: 'block' }} />
+                ) : (
+                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#ff8c00,#ff4400)', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#fff', fontWeight: 700 }}>
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#eee', marginBottom: 3 }}>{name}</div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#ff8c0011', border: '1px solid #ff8c0033', borderRadius: 20, padding: '3px 10px' }}>
+                  <span style={{ fontSize: 8, color: '#ff8c00', fontWeight: 900, letterSpacing: '1px', textTransform: 'uppercase' }}>⚡ Admin</span>
+                </div>
+              </div>
+
+              {/* Logout */}
+              <div style={{ padding: '6px' }}>
+                <button
+                  className="profile-menu-btn"
+                  onClick={() => { setProfileOpen(false); handleLogout(); }}
+                  style={{
+                    width: '100%', background: 'transparent', border: 'none',
+                    padding: '10px 12px', borderRadius: 10,
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                >
+                  <span style={{ fontSize: 15 }}>🚪</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#ff4444' }}>Sign out</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Content */}
       <div style={{ flex: 1, padding: '14px 16px', maxWidth: 600, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
-        {/* OVERVIEW SECTION */}
+        {/* OVERVIEW */}
         {section === 'overview' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, animation: 'fadeIn 0.2s ease' }}>
             <div style={{ fontSize: 11, color: '#333', fontWeight: 700 }}>
               {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </div>
 
-            {/* Stats Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <StatCard label="Total Users"  value={stats?.total}     icon="👥" color="#4488ff" />
               <StatCard label="Active"       value={stats?.active}    icon="✅" color="#00cc66" />
@@ -365,7 +420,6 @@ export default function AdminPanel() {
               <StatCard label="Tags Today"   value={stats?.todayTags} icon="⚡" color="#ff8c00" />
             </div>
 
-            {/* Total tags big card */}
             <div style={{
               background: 'linear-gradient(135deg, #0f0800, #080808)',
               border: '1px solid #ff8c0022', borderRadius: 16, padding: '20px',
@@ -378,11 +432,12 @@ export default function AdminPanel() {
               </div>
             </div>
 
-            {/* Quick user summary */}
             <div style={{ background: '#0c0c0c', border: '1px solid #161616', borderRadius: 14, padding: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 900, color: '#ff8c00', marginBottom: 12 }}>👥 Recent Users</div>
               {loading ? (
                 <div style={{ fontSize: 12, color: '#333', textAlign: 'center', padding: 16 }}>Loading...</div>
+              ) : users.length === 0 ? (
+                <div style={{ fontSize: 12, color: '#333', textAlign: 'center', padding: 16 }}>No users yet</div>
               ) : users.slice(0, 3).map(u => (
                 <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #0e0e0e' }}>
                   {u.avatar ? (
@@ -406,18 +461,16 @@ export default function AdminPanel() {
                   width: '100%', marginTop: 10, padding: '8px', borderRadius: 8, fontSize: 11, fontWeight: 700,
                   background: 'transparent', border: '1px solid #1a1a1a', color: '#444', cursor: 'pointer',
                 }}>
-                  Sab dekho ({users.length} users) →
+                  View all ({users.length} users) →
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* USERS SECTION */}
+        {/* USERS */}
         {section === 'users' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fadeIn 0.2s ease' }}>
-
-            {/* Search */}
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -425,7 +478,6 @@ export default function AdminPanel() {
               style={{ ...inputStyle, fontSize: 12 }}
             />
 
-            {/* Filter tabs */}
             <div style={{ display: 'flex', gap: 6 }}>
               {[
                 { id: 'all',      label: '🌐 All',      count: users.length },
@@ -444,9 +496,8 @@ export default function AdminPanel() {
               ))}
             </div>
 
-            {/* User List */}
             {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 13 }}>⏳ Loading...</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 13 }}>⏳ Loading users...</div>
             ) : filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 13 }}>No users found</div>
             ) : filtered.map(user => (
@@ -464,22 +515,21 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {/* ACTIVITY SECTION */}
+        {/* ACTIVITY */}
         {section === 'logs' && (
           <div style={{ animation: 'fadeIn 0.2s ease' }}>
             <div style={{ background: '#0c0c0c', border: '1px solid #161616', borderRadius: 14, padding: 20, textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
               <div style={{ fontSize: 13, fontWeight: 800, color: '#555', marginBottom: 8 }}>Activity Logs</div>
               <div style={{ fontSize: 12, color: '#333', lineHeight: 1.6 }}>
-                Admin actions yahan dikhenge — enable/disable, limit changes, usage resets
+                Admin actions are logged here — enable/disable, limit changes, usage resets
               </div>
               <div style={{ marginTop: 16, fontSize: 11, color: '#2a2a2a' }}>
-                Supabase → Table Editor → admin_logs mein dekho
+                Supabase → Table Editor → admin_logs
               </div>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
@@ -496,10 +546,10 @@ function StatCard({ label, value, icon, color }) {
 }
 
 function UserCard({ user, onToggle, onEditLimit, onReset }) {
-  const enabled      = user.is_enabled !== false;
-  const dailyPct     = user.daily_limit > 0 ? Math.min(100, (user.daily_used / user.daily_limit) * 100) : 0;
-  const totalPct     = user.total_limit > 0 ? Math.min(100, (user.total_used / user.total_limit) * 100) : 0;
-  const joinDate     = user.joined_at ? new Date(user.joined_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—';
+  const enabled  = user.is_enabled !== false;
+  const dailyPct = user.daily_limit > 0 ? Math.min(100, (user.daily_used / user.daily_limit) * 100) : 0;
+  const totalPct = user.total_limit > 0 ? Math.min(100, (user.total_used / user.total_limit) * 100) : 0;
+  const joinDate = user.joined_at ? new Date(user.joined_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—';
 
   return (
     <div className="user-card" style={{
@@ -508,7 +558,6 @@ function UserCard({ user, onToggle, onEditLimit, onReset }) {
       borderRadius: 14, padding: '14px',
       opacity: enabled ? 1 : 0.8, transition: 'all 0.2s',
     }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         {user.avatar ? (
           <img src={user.avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', border: `2px solid ${enabled ? '#ff8c0033' : '#ff000033'}`, flexShrink: 0 }} />
@@ -530,18 +579,16 @@ function UserCard({ user, onToggle, onEditLimit, onReset }) {
         </div>
       </div>
 
-      {/* Usage Bars */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
         <UsageBar label="Daily" used={user.daily_used} limit={user.daily_limit} pct={dailyPct} />
         <UsageBar label="Total" used={user.total_used} limit={user.total_limit} pct={totalPct} />
       </div>
 
-      {/* Actions */}
       <div style={{ display: 'flex', gap: 6 }}>
         {[
-          { label: enabled ? '🚫 Disable' : '✅ Enable', onClick: onToggle, bg: enabled ? '#1a0000' : '#001a08', border: enabled ? '#ff000033' : '#00cc6633', color: enabled ? '#ff4444' : '#00cc66' },
-          { label: '✏️ Limits',  onClick: onEditLimit, bg: '#0f0800', border: '#ff8c0033', color: '#ff8c00' },
-          { label: '🔄 Reset',   onClick: onReset,     bg: '#080814', border: '#4488ff33', color: '#4488ff' },
+          { label: enabled ? '🚫 Disable' : '✅ Enable', onClick: onToggle,     bg: enabled ? '#1a0000' : '#001a08', border: enabled ? '#ff000033' : '#00cc6633', color: enabled ? '#ff4444' : '#00cc66' },
+          { label: '✏️ Limits',                          onClick: onEditLimit,  bg: '#0f0800', border: '#ff8c0033', color: '#ff8c00' },
+          { label: '🔄 Reset',                           onClick: onReset,      bg: '#080814', border: '#4488ff33', color: '#4488ff' },
         ].map((btn, i) => (
           <button key={i} className="action-btn" onClick={btn.onClick} style={{
             flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 10, fontWeight: 800,

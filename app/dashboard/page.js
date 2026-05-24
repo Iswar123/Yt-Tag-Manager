@@ -58,6 +58,58 @@ function SkeletonBlock({ width = '100%', height = 14, radius = 6, style = {} }) 
   );
 }
 
+// ── Quota Bar ─────────────────────────────────────────────────────
+function QuotaBar({ used }) {
+  const TOTAL   = 10000;
+  const pct     = Math.min((used / TOTAL) * 100, 100);
+  const color   = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
+
+  // Next reset = midnight Pacific Time
+  const now    = new Date();
+  const ptNow  = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const ptReset = new Date(ptNow);
+  ptReset.setDate(ptReset.getDate() + 1);
+  ptReset.setHours(0, 0, 0, 0);
+  const diffMs = ptReset - ptNow;
+  const hh     = Math.floor(diffMs / 3600000);
+  const mm     = Math.floor((diffMs % 3600000) / 60000);
+
+  return (
+    <div style={{
+      background: '#090909',
+      borderBottom: '1px solid #141414',
+      padding: '6px 16px 8px',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <span style={{ fontSize: 9, color: '#444', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>
+          📊 Quota Used (Est.)
+        </span>
+        <span style={{ fontSize: 9, color: '#333', fontWeight: 600 }}>
+          🔄 {hh}h {mm}m mein reset
+        </span>
+      </div>
+      <div style={{ height: 3, background: '#1a1a1a', borderRadius: 4, overflow: 'hidden', marginBottom: 4 }}>
+        <div style={{
+          height: '100%',
+          width: `${pct}%`,
+          background: color,
+          borderRadius: 4,
+          transition: 'width 0.5s ease',
+          boxShadow: pct > 0 ? `0 0 6px ${color}66` : 'none',
+        }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color }}>
+          {used.toLocaleString()} units
+        </span>
+        <span style={{ fontSize: 9, color: '#2a2a2a', fontWeight: 600 }}>
+          / 10,000
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const supabase = createClient();
   const router   = useRouter();
@@ -78,6 +130,9 @@ export default function DashboardPage() {
   const [toast,        setToast]        = useState({ msg: '', type: 'info' });
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // ── Quota state ───────────────────────────────────────────────
+  const [quotaUsed, setQuotaUsed] = useState(0);
+
   const tagList  = tags.split(',').map(t => t.trim()).filter(Boolean);
   const tagCount = tagList.length;
   const isDirty  = selectedVideo && tags !== (selectedVideo.tags || []).join(', ');
@@ -88,6 +143,21 @@ export default function DashboardPage() {
   }
 
   useEffect(() => { init(); }, []);
+
+  async function loadQuota(userId) {
+    try {
+      const ptDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const { data } = await supabase
+        .from('quota_usage')
+        .select('units_used')
+        .eq('user_id', userId)
+        .eq('pt_date', ptDate)
+        .single();
+      setQuotaUsed(data?.units_used || 0);
+    } catch {
+      setQuotaUsed(0);
+    }
+  }
 
   async function init() {
     setCredsLoading(true);
@@ -106,6 +176,8 @@ export default function DashboardPage() {
     } else {
       setCreds(data);
     }
+
+    await loadQuota(user.id);
     setCredsLoading(false);
   }
 
@@ -125,6 +197,7 @@ export default function DashboardPage() {
       setTags((data.tags || []).join(', '));
       setStatus('idle');
       showToast('✅ Video fetch ho gaya!', 'success');
+      if (user) await loadQuota(user.id);
     } catch (e) {
       showToast('❌ ' + e.message, 'error');
     }
@@ -168,6 +241,7 @@ export default function DashboardPage() {
       setSelectedVideo(prev => ({ ...prev, tags: tagList }));
       showToast('✅ Tags YouTube pe update ho gaye!', 'success');
       setTimeout(() => setStatus('idle'), 3000);
+      if (user) await loadQuota(user.id);
     } catch (e) {
       setStatus('error');
       showToast('❌ ' + e.message, 'error');
@@ -224,6 +298,7 @@ export default function DashboardPage() {
     return (
       <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
         <Topbar user={user} onSettings={() => setSettingsOpen(true)} onLogout={handleLogout} />
+        <QuotaBar used={quotaUsed} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ width: 80, height: 80, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, marginBottom: 28, boxShadow: '0 0 60px rgba(255,140,0,0.25)' }}>⚙️</div>
           <h2 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 900, color: '#eee' }}>Setup Karo Pehle</h2>
@@ -282,6 +357,9 @@ export default function DashboardPage() {
         showBack={!!selectedVideo}
         onBack={handleReset}
       />
+
+      {/* ── Quota Bar — topbar ke niche ── */}
+      <QuotaBar used={quotaUsed} />
 
       <div style={{ flex: 1, padding: '14px 12px 40px', maxWidth: 600, margin: '0 auto', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
@@ -495,7 +573,6 @@ function SearchSection({ urlInput, setUrlInput, fetching, onFetch, showToast }) 
 
 // ── Settings Drawer ───────────────────────────────────────────────
 function SettingsDrawer({ supabase, user, onClose, showToast }) {
-  // dataLoading: jab tak DB se creds fetch nahi hote, YouTube section skeleton dikhao
   const [dataLoading,    setDataLoading]    = useState(true);
   const [channelLoading, setChannelLoading] = useState(false);
 
@@ -540,7 +617,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
         openrouter_api_key: data.openrouter_api_key || '',
       });
 
-      // Channel info fetch — only if YT connected
       if (data.yt_refresh_token) {
         setChannelLoading(true);
         try {
@@ -636,7 +712,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
     loadApiKeys();
   }
 
-  // ytConnected: dataLoading khatam hone ke baad hi decide hoga
   const ytConnected   = !dataLoading && !!form.yt_refresh_token;
   const displayAvatar = (ytConnected && channelInfo.avatar)
     ? channelInfo.avatar
@@ -658,7 +733,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
         animation: 'slideInRight 0.28s cubic-bezier(0.32,0.72,0,1)',
         paddingBottom: 32,
       }}>
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', position: 'sticky', top: 0, background: '#0a0a0a', zIndex: 2, borderBottom: '1px solid #141414' }}>
           <span style={{ fontSize: 15, fontWeight: 900, color: '#ff8c00' }}>⚙️ Settings</span>
           <button onClick={onClose}
@@ -707,7 +781,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
           {/* ── YouTube section ── */}
           <DrawerSection title="🎬 YouTube">
             {dataLoading ? (
-              // Skeleton jab tak DB se pata nahi YT connected hai ya nahi
               <SkeletonBlock height={48} radius={12} />
             ) : ytConnected ? (
               <>

@@ -64,15 +64,18 @@ function QuotaBar({ used }) {
   const pct     = Math.min((used / TOTAL) * 100, 100);
   const color   = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
 
-  // Next reset = midnight Pacific Time
-  const now    = new Date();
-  const ptNow  = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const ptReset = new Date(ptNow);
-  ptReset.setDate(ptReset.getDate() + 1);
-  ptReset.setHours(0, 0, 0, 0);
-  const diffMs = ptReset - ptNow;
-  const hh     = Math.floor(diffMs / 3600000);
-  const mm     = Math.floor((diffMs % 3600000) / 60000);
+  // Next reset = midnight Pacific Time (DST-safe, IST ke liye bhi sahi)
+  const now = new Date();
+  // Step 1: PT mein aaj ka date nikalo
+  const ptDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const [ptY, ptM, ptD] = ptDateStr.split('-').map(Number);
+  // Step 2: Kal PT midnight ka UTC time nikalo using Intl offset trick
+  const refPT   = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const offsetMs = now - refPT; // UTC - PT = offset (e.g. 8h or 7h depending on DST)
+  const nextMidnightPT = new Date(Date.UTC(ptY, ptM - 1, ptD + 1, 0, 0, 0) + offsetMs);
+  const diffMs  = nextMidnightPT - now;
+  const hh      = Math.floor(diffMs / 3600000);
+  const mm      = Math.floor((diffMs % 3600000) / 60000);
 
   return (
     <div style={{

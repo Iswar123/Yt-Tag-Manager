@@ -64,26 +64,19 @@ function QuotaBar({ used }) {
   const pct   = Math.min((used / TOTAL) * 100, 100);
   const color = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
 
-  // ── FIXED: Sahi PT midnight calculation ──────────────────────────
+  // ── FIXED: PT local time se seedha calculate karo ────────────────
   const now = new Date();
 
-  // PT mein aaj ka date string nikalo (en-CA = YYYY-MM-DD format)
-  const ptDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-  const [ptY, ptM, ptD] = ptDateStr.split('-').map(Number);
+  // PT mein abhi ka local time
+  const ptNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
 
-  // PT aur UTC ka offset nikalo (DST-safe)
-  const refPT   = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const offsetMs = now - refPT; // e.g. 8h winter, 7h summer (milliseconds mein)
+  // Kal ki PT midnight (PT local time mein)
+  const nextMidnight = new Date(ptNow);
+  nextMidnight.setHours(0, 0, 0, 0);
+  nextMidnight.setDate(nextMidnight.getDate() + 1);
 
-  // Pehle AAJI ki PT midnight UTC mein nikalo
-  const todayMidnightPT = new Date(Date.UTC(ptY, ptM - 1, ptD, 0, 0, 0) + offsetMs);
-
-  // Agar aaj ki PT midnight already nikal gayi, toh kal ki midnight use karo
-  const nextMidnightPT = todayMidnightPT > now
-    ? todayMidnightPT
-    : new Date(todayMidnightPT.getTime() + 86400000); // +1 din
-
-  const diffMs = nextMidnightPT - now;
+  // PT ke hisaab se kitna time bacha
+  const diffMs = nextMidnight - ptNow;
   const hh     = Math.floor(diffMs / 3600000);
   const mm     = Math.floor((diffMs % 3600000) / 60000);
 

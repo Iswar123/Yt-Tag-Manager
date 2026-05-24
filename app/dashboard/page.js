@@ -60,22 +60,32 @@ function SkeletonBlock({ width = '100%', height = 14, radius = 6, style = {} }) 
 
 // ── Quota Bar ─────────────────────────────────────────────────────
 function QuotaBar({ used }) {
-  const TOTAL   = 10000;
-  const pct     = Math.min((used / TOTAL) * 100, 100);
-  const color   = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
+  const TOTAL = 10000;
+  const pct   = Math.min((used / TOTAL) * 100, 100);
+  const color = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
 
-  // Next reset = midnight Pacific Time (DST-safe, IST ke liye bhi sahi)
+  // ── FIXED: Sahi PT midnight calculation ──────────────────────────
   const now = new Date();
-  // Step 1: PT mein aaj ka date nikalo
+
+  // PT mein aaj ka date string nikalo (en-CA = YYYY-MM-DD format)
   const ptDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   const [ptY, ptM, ptD] = ptDateStr.split('-').map(Number);
-  // Step 2: Kal PT midnight ka UTC time nikalo using Intl offset trick
+
+  // PT aur UTC ka offset nikalo (DST-safe)
   const refPT   = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const offsetMs = now - refPT; // UTC - PT = offset (e.g. 8h or 7h depending on DST)
-  const nextMidnightPT = new Date(Date.UTC(ptY, ptM - 1, ptD + 1, 0, 0, 0) + offsetMs);
-  const diffMs  = nextMidnightPT - now;
-  const hh      = Math.floor(diffMs / 3600000);
-  const mm      = Math.floor((diffMs % 3600000) / 60000);
+  const offsetMs = now - refPT; // e.g. 8h winter, 7h summer (milliseconds mein)
+
+  // Pehle AAJI ki PT midnight UTC mein nikalo
+  const todayMidnightPT = new Date(Date.UTC(ptY, ptM - 1, ptD, 0, 0, 0) + offsetMs);
+
+  // Agar aaj ki PT midnight already nikal gayi, toh kal ki midnight use karo
+  const nextMidnightPT = todayMidnightPT > now
+    ? todayMidnightPT
+    : new Date(todayMidnightPT.getTime() + 86400000); // +1 din
+
+  const diffMs = nextMidnightPT - now;
+  const hh     = Math.floor(diffMs / 3600000);
+  const mm     = Math.floor((diffMs % 3600000) / 60000);
 
   return (
     <div style={{
@@ -716,11 +726,9 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
       const data = await res.json();
       if (data.error) { showToast('❌ ' + data.error, 'error'); return; }
 
-      // Local state update karo
       setChannels(prev => prev.map(ch => ({ ...ch, is_active: ch.channel_id === channelId })));
       setForm(f => ({ ...f, channel_id: channelId }));
 
-      // Channel info refresh karo
       setChannelLoading(true);
       try {
         const ytRes  = await fetch('/api/youtube');
@@ -992,16 +1000,13 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                 padding: '0 0 32px',
                 animation: 'slideUp 0.22s cubic-bezier(0.32,0.72,0,1)',
               }}>
-                {/* Handle */}
                 <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 8px' }}>
                   <div style={{ width: 36, height: 4, borderRadius: 2, background: '#2a2a2a' }} />
                 </div>
-
                 <div style={{ padding: '0 16px 12px', borderBottom: '1px solid #1a1a1a', marginBottom: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 900, color: '#ddd' }}>Channel Switch Karo</div>
                   <div style={{ fontSize: 11, color: '#444', marginTop: 3 }}>Is Gmail account ke channels</div>
                 </div>
-
                 <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '55vh', overflowY: 'auto' }}>
                   {channels.map(ch => (
                     <button key={ch.channel_id}
@@ -1011,8 +1016,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                         display: 'flex', alignItems: 'center', gap: 12,
                         padding: '12px 16px',
                         background: ch.is_active ? '#0f1a0a' : 'transparent',
-                        border: 'none',
-                        borderBottom: '1px solid #141414',
+                        border: 'none', borderBottom: '1px solid #141414',
                         cursor: ch.is_active ? 'default' : 'pointer',
                         transition: 'background 0.15s',
                         opacity: switchingChannel && switchingChannel !== ch.channel_id ? 0.5 : 1,
@@ -1040,7 +1044,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     </button>
                   ))}
                 </div>
-
                 <div style={{ padding: '12px 16px 0' }}>
                   <button onClick={() => setShowChannelSwitcher(false)}
                     style={{ width: '100%', background: '#141414', border: '1px solid #222', color: '#555', borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
@@ -1056,7 +1059,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             <>
               <div onClick={() => { setShowApiKeysModal(false); setShowAddKey(false); setNewKey(''); setNewLabel(''); }}
                 style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, animation: 'fadeIn 0.15s ease' }} />
-
               <div style={{
                 position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
                 background: '#0e0e0e', borderTop: '1px solid #222',
@@ -1074,7 +1076,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     ✕
                   </button>
                 </div>
-
                 <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {apiKeys.length === 0 && !showAddKey && (
                     <div style={{ textAlign: 'center', padding: '24px 0', color: '#333', fontSize: 12 }}>Koi key add nahi hui abhi</div>
@@ -1105,7 +1106,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                       </div>
                     </div>
                   ))}
-
                   {showAddKey && (
                     <div style={{ background: '#0c0c0c', border: '1px solid #252525', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                       <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (e.g. Project 1)" style={{ ...inputStyle, fontSize: 12 }} />
@@ -1123,7 +1123,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     </div>
                   )}
                 </div>
-
                 {!showAddKey && (
                   <div style={{ padding: '10px 14px 20px', flexShrink: 0, borderTop: '1px solid #141414' }}>
                     <button onClick={() => setShowAddKey(true)}

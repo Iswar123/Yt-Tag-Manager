@@ -593,12 +593,15 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   const [newLabel,         setNewLabel]         = useState('');
   const [addingKey,        setAddingKey]        = useState(false);
   const [showAddKey,       setShowAddKey]       = useState(false);
-  const [showApiKeysModal, setShowApiKeysModal] = useState(false);
+  const [showApiKeysModal,    setShowApiKeysModal]    = useState(false);
+  const [channels,            setChannels]            = useState([]);
+  const [showChannelSwitcher, setShowChannelSwitcher] = useState(false);
+  const [switchingChannel,    setSwitchingChannel]    = useState(false);
 
   const providerSaveTimer = useRef(null);
   useEffect(() => { return () => clearTimeout(providerSaveTimer.current); }, []);
 
-  useEffect(() => { loadData(); loadApiKeys(); }, []);
+  useEffect(() => { loadData(); loadApiKeys(); loadChannels(); }, []);
 
   async function loadData() {
     setDataLoading(true);
@@ -663,12 +666,59 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
     else        showToast('❌ Save fail: ' + error.message, 'error');
   }
 
+  async function loadChannels() {
+    try {
+      const res  = await fetch('/api/youtube/channels');
+      const data = await res.json();
+      if (data.channels) setChannels(data.channels);
+    } catch (_) {}
+  }
+
+  async function handleSwitchChannel(channelId) {
+    setSwitchingChannel(channelId);
+    try {
+      const res  = await fetch('/api/youtube/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel_id: channelId }),
+      });
+      const data = await res.json();
+      if (data.error) { showToast('❌ ' + data.error, 'error'); return; }
+
+      // Local state update karo
+      setChannels(prev => prev.map(ch => ({ ...ch, is_active: ch.channel_id === channelId })));
+      setForm(f => ({ ...f, channel_id: channelId }));
+
+      // Channel info refresh karo
+      setChannelLoading(true);
+      try {
+        const ytRes  = await fetch('/api/youtube');
+        const ytData = await ytRes.json();
+        if (ytData.channelTitle) {
+          setChannelInfo({
+            name:             ytData.channelTitle,
+            avatar:           ytData.channelAvatar    || '',
+            subscribers:      ytData.subscriberCount  || '0',
+            subscriberHidden: ytData.subscriberHidden || false,
+          });
+        }
+      } catch (_) {}
+      setChannelLoading(false);
+      setShowChannelSwitcher(false);
+      showToast('✅ Channel switch ho gaya!', 'success');
+    } finally {
+      setSwitchingChannel(false);
+    }
+  }
+
   async function handleDisconnect() {
     await supabase.from('user_credentials').upsert({
       user_id: user.id, yt_refresh_token: null, channel_id: null, updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' });
+    await supabase.from('user_channels').delete().eq('user_id', user.id);
     setForm(p => ({ ...p, yt_refresh_token: '', channel_id: '' }));
     setChannelInfo({ name: '', avatar: '', subscribers: '', subscriberHidden: false });
+    setChannels([]);
     showToast('🔌 YouTube disconnect ho gaya!', 'warn');
   }
 
@@ -772,8 +822,16 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     : user?.email}
                 </div>
               </div>
-              <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', flexShrink: 0, color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
-                {ytConnected ? '✅ Connected' : '⬡ Not Connected'}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
+                  {ytConnected ? '✅ Connected' : '⬡ Not Connected'}
+                </div>
+                {ytConnected && channels.length > 1 && (
+                  <button onClick={() => setShowChannelSwitcher(true)}
+                    style={{ fontSize: 9, fontWeight: 700, borderRadius: 20, padding: '3px 10px', color: '#ff8c00', background: '#120800', border: '1px solid #ff8c0033', cursor: 'pointer' }}>
+                    ⇄ Switch Channel
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -892,6 +950,77 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
               </span>
             </button>
           </DrawerSection>
+
+          {/* ── Channel Switcher Modal ── */}
+          {showChannelSwitcher && (
+            <>
+              <div onClick={() => setShowChannelSwitcher(false)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 200, animation: 'fadeIn 0.15s ease' }} />
+              <div style={{
+                position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
+                background: '#0e0e0e', borderRadius: '20px 20px 0 0',
+                border: '1px solid #222', borderBottom: 'none',
+                padding: '0 0 32px',
+                animation: 'slideUp 0.22s cubic-bezier(0.32,0.72,0,1)',
+              }}>
+                {/* Handle */}
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 8px' }}>
+                  <div style={{ width: 36, height: 4, borderRadius: 2, background: '#2a2a2a' }} />
+                </div>
+
+                <div style={{ padding: '0 16px 12px', borderBottom: '1px solid #1a1a1a', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: '#ddd' }}>Channel Switch Karo</div>
+                  <div style={{ fontSize: 11, color: '#444', marginTop: 3 }}>Is Gmail account ke channels</div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '55vh', overflowY: 'auto' }}>
+                  {channels.map(ch => (
+                    <button key={ch.channel_id}
+                      onClick={() => !ch.is_active && handleSwitchChannel(ch.channel_id)}
+                      disabled={!!switchingChannel}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px 16px',
+                        background: ch.is_active ? '#0f1a0a' : 'transparent',
+                        border: 'none',
+                        borderBottom: '1px solid #141414',
+                        cursor: ch.is_active ? 'default' : 'pointer',
+                        transition: 'background 0.15s',
+                        opacity: switchingChannel && switchingChannel !== ch.channel_id ? 0.5 : 1,
+                      }}>
+                      {ch.avatar_url ? (
+                        <img src={ch.avatar_url} alt=""
+                          style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, border: `2px solid ${ch.is_active ? '#44bb6644' : '#1a1a1a'}` }} />
+                      ) : (
+                        <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>📺</div>
+                      )}
+                      <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: ch.is_active ? '#44bb66' : '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ch.title || ch.channel_id}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#444', marginTop: 2, fontFamily: 'monospace' }}>{ch.channel_id}</div>
+                      </div>
+                      <div style={{ flexShrink: 0, fontSize: 11 }}>
+                        {switchingChannel === ch.channel_id
+                          ? <span style={{ color: '#ff8c00' }}>⏳</span>
+                          : ch.is_active
+                            ? <span style={{ color: '#44bb66', fontWeight: 700 }}>✓ Active</span>
+                            : <span style={{ color: '#333' }}>›</span>
+                        }
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ padding: '12px 16px 0' }}>
+                  <button onClick={() => setShowChannelSwitcher(false)}
+                    style={{ width: '100%', background: '#141414', border: '1px solid #222', color: '#555', borderRadius: 12, padding: '12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ── API Keys Modal ── */}
           {showApiKeysModal && (

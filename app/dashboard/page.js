@@ -64,21 +64,20 @@ function QuotaBar({ used }) {
   const pct   = Math.min((used / TOTAL) * 100, 100);
   const color = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
 
-  // ── FIXED: PT local time se seedha calculate karo ────────────────
-  const now = new Date();
+  // PT mein current H/M/S nikalo Intl se (reliable, DST-safe)
+  const now  = new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false,
+  }).formatToParts(now);
+  const ptH  = parseInt(parts.find(p => p.type === 'hour').value);
+  const ptMi = parseInt(parts.find(p => p.type === 'minute').value);
+  const ptS  = parseInt(parts.find(p => p.type === 'second').value);
 
-  // PT mein abhi ka local time
-  const ptNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-
-  // Kal ki PT midnight (PT local time mein)
-  const nextMidnight = new Date(ptNow);
-  nextMidnight.setHours(0, 0, 0, 0);
-  nextMidnight.setDate(nextMidnight.getDate() + 1);
-
-  // PT ke hisaab se kitna time bacha
-  const diffMs = nextMidnight - ptNow;
-  const hh     = Math.floor(diffMs / 3600000);
-  const mm     = Math.floor((diffMs % 3600000) / 60000);
+  // Midnight tak kitne seconds bacha
+  const secsLeft = (23 - ptH) * 3600 + (59 - ptMi) * 60 + (60 - ptS);
+  const hh = Math.floor(secsLeft / 3600);
+  const mm = Math.floor((secsLeft % 3600) / 60);
 
   return (
     <div style={{

@@ -7,8 +7,8 @@ export async function GET(request) {
   const code  = searchParams.get('code');
   const error = searchParams.get('error');
 
-  if (error) return NextResponse.redirect(`${origin}/settings?yt_error=${encodeURIComponent(error)}`);
-  if (!code)  return NextResponse.redirect(`${origin}/settings?yt_error=no_code`);
+  if (error) return NextResponse.redirect(`${origin}/dashboard?yt_error=${encodeURIComponent(error)}`);
+  if (!code)  return NextResponse.redirect(`${origin}/dashboard?yt_error=no_code`);
 
   try {
     const supabase = createClient();
@@ -17,7 +17,7 @@ export async function GET(request) {
 
     const clientId     = process.env.YOUTUBE_CLIENT_ID;
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
-    if (!clientId || !clientSecret) return NextResponse.redirect(`${origin}/settings?yt_error=env_missing`);
+    if (!clientId || !clientSecret) return NextResponse.redirect(`${origin}/dashboard?yt_error=env_missing`);
 
     // Step 1: Code → Tokens
     const tokenRes  = await fetch('https://oauth2.googleapis.com/token', {
@@ -33,8 +33,8 @@ export async function GET(request) {
     });
     const tokenData = await tokenRes.json();
 
-    if (tokenData.error)          return NextResponse.redirect(`${origin}/settings?yt_error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`);
-    if (!tokenData.refresh_token) return NextResponse.redirect(`${origin}/settings?yt_error=no_refresh_token`);
+    if (tokenData.error)          return NextResponse.redirect(`${origin}/dashboard?yt_error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`);
+    if (!tokenData.refresh_token) return NextResponse.redirect(`${origin}/dashboard?yt_error=no_refresh_token`);
 
     // Step 2: Is Gmail se saare channels fetch karo
     let channels = [];
@@ -77,9 +77,9 @@ export async function GET(request) {
       await supabase.from('user_channels').insert(rows);
     }
 
-    return NextResponse.redirect(`${origin}/settings?yt_connected=true`);
+    return NextResponse.redirect(`${origin}/dashboard?yt_connected=true`);
 
   } catch (e) {
-    return NextResponse.redirect(`${origin}/settings?yt_error=${encodeURIComponent(e.message)}`);
+    return NextResponse.redirect(`${origin}/dashboard?yt_error=${encodeURIComponent(e.message)}`);
   }
 }

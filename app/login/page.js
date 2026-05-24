@@ -5,47 +5,84 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 const FEATURES = [
-  {
-    icon: '🤖',
-    title: 'AI Tag Generator',
-    desc: 'GPT-4 aur Llama se instant YouTube tags generate karo — views badhao automatically',
-    color: '#ff8c00',
-  },
-  {
-    icon: '📊',
-    title: 'Channel Analytics',
-    desc: 'Subscriber count, video stats, aur performance ek jagah dekho',
-    color: '#4488ff',
-  },
-  {
-    icon: '✏️',
-    title: 'One-Click Tag Update',
-    desc: 'AI se tags generate karo aur seedha YouTube pe update karo — copy-paste nahi',
-    color: '#00cc66',
-  },
-  {
-    icon: '🔑',
-    title: 'API Key Rotation',
-    desc: 'Multiple Google API keys add karo — quota khatam hone par automatically next key use hogi',
-    color: '#aa44ff',
-  },
-  {
-    icon: '🎬',
-    title: 'Video Manager',
-    desc: 'Recent 5 videos ek jagah — kisi bhi video ke tags instantly edit karo',
-    color: '#ff4488',
-  },
-  {
-    icon: '🔒',
-    title: 'Secure & Private',
-    desc: 'Tumhara data sirf tumhara — end-to-end secure OAuth, koi data share nahi hota',
-    color: '#ffaa00',
-  },
+  { icon: '🤖', title: 'AI Tag Generator',    desc: 'Generate instant YouTube tags with GPT-4 and Llama — boost your views automatically', color: '#ff8c00' },
+  { icon: '📊', title: 'Channel Analytics',   desc: 'View subscriber count, video stats, and performance all in one place',               color: '#4488ff' },
+  { icon: '✏️', title: 'One-Click Update',    desc: 'Generate tags with AI and update directly to YouTube — no copy-paste needed',         color: '#00cc66' },
+  { icon: '🔑', title: 'API Key Rotation',    desc: 'Add multiple Google API keys — automatically switches when quota runs out',           color: '#aa44ff' },
+  { icon: '🎬', title: 'Video Manager',       desc: 'Your recent 5 videos in one place — instantly edit tags for any video',              color: '#ff4488' },
+  { icon: '🔒', title: 'Secure & Private',    desc: 'Your data stays yours — end-to-end secure OAuth, nothing is shared',                 color: '#ffaa00' },
 ];
 
+// Simulated YouTube-style activity feed items
+const ACTIVITY_ITEMS = [
+  { icon: '🔍', text: 'Fetching video data...', color: '#4488ff' },
+  { icon: '🤖', text: 'AI generating tags...', color: '#aa44ff' },
+  { icon: '✅', text: 'Tags updated on YouTube', color: '#00cc66' },
+  { icon: '⚡', text: '16 SEO tags generated', color: '#ff8c00' },
+  { icon: '📊', text: 'Channel analytics loaded', color: '#4488ff' },
+  { icon: '🔄', text: 'Refreshing video list...', color: '#ffaa00' },
+  { icon: '🎯', text: 'Tags optimized for search', color: '#00cc66' },
+  { icon: '🚀', text: 'Upload quota checked', color: '#ff4488' },
+  { icon: '🏷️', text: 'Tags applied: travel vlog', color: '#ff8c00' },
+  { icon: '🔑', text: 'API key rotated', color: '#aa44ff' },
+  { icon: '📈', text: 'SEO score improved', color: '#00cc66' },
+  { icon: '🎬', text: 'Video metadata synced', color: '#4488ff' },
+];
+
+function ActivityFeed() {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    // Add items one by one like a live feed
+    let index = 0;
+    const interval = setInterval(() => {
+      const item = ACTIVITY_ITEMS[index % ACTIVITY_ITEMS.length];
+      setItems(prev => {
+        const next = [{ ...item, id: Date.now(), ts: new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }) }, ...prev];
+        return next.slice(0, 6); // keep last 6
+      });
+      index++;
+    }, 1800);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div style={{
+      background: '#0a0a0a', border: '1px solid #1a1a1a',
+      borderRadius: 14, padding: '12px 14px',
+      minHeight: 180, overflow: 'hidden',
+    }}>
+      <div style={{ fontSize: 10, color: '#333', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 10 }}>
+        ● Live Activity
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {items.map((item, i) => (
+          <div
+            key={item.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '7px 0',
+              borderBottom: i < items.length - 1 ? '1px solid #111' : 'none',
+              opacity: 1 - i * 0.14,
+              animation: i === 0 ? 'slideDown 0.35s ease' : 'none',
+            }}
+          >
+            <span style={{ fontSize: 13, flexShrink: 0 }}>{item.icon}</span>
+            <span style={{ fontSize: 11, color: item.color, fontWeight: 600, flex: 1 }}>{item.text}</span>
+            <span style={{ fontSize: 9, color: '#2a2a2a', flexShrink: 0 }}>{item.ts}</span>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <div style={{ fontSize: 11, color: '#222', textAlign: 'center', padding: '20px 0' }}>Initializing...</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage() {
-  const [loading,    setLoading]    = useState(false);
-  const [mounted,    setMounted]    = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [mounted,       setMounted]       = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
   const supabase = createClient();
 
@@ -74,25 +111,21 @@ export default function LoginPage() {
     }}>
 
       <style>{`
-        @keyframes spin    { to { transform: rotate(360deg); } }
-        @keyframes fadeUp  { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes pulse   { 0%,100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.08); } }
-        @keyframes float   { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
-        @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes spin      { to { transform: rotate(360deg); } }
+        @keyframes fadeUp    { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pulse     { 0%,100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.08); } }
+        @keyframes float     { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+        @keyframes shimmer   { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes borderGlow { 0%,100% { border-color: #ff8c0044; } 50% { border-color: #ff8c00aa; } }
 
         .login-btn:hover:not(:disabled) {
           transform: translateY(-1px);
           box-shadow: 0 8px 32px rgba(255,140,0,0.35) !important;
         }
-        .feature-card {
-          transition: all 0.3s ease;
-        }
-        .feature-card:hover {
-          transform: translateY(-2px);
-          border-color: #ff8c0033 !important;
-        }
+        .feature-card { transition: all 0.3s ease; }
+        .feature-card:hover { transform: translateY(-2px); border-color: #ff8c0033 !important; }
         .google-btn:hover:not(:disabled) {
           background: #f0f0f0 !important;
           transform: translateY(-1px);
@@ -128,7 +161,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div style={{
           animation: mounted ? 'fadeUp 0.6s ease forwards' : 'none',
-          textAlign: 'center', marginBottom: 32,
+          textAlign: 'center', marginBottom: 28,
         }}>
           <div style={{
             width: 72, height: 72, borderRadius: 20, margin: '0 auto 16px',
@@ -146,15 +179,24 @@ export default function LoginPage() {
             animation: 'shimmer 3s linear infinite',
           }}>YT Tag Manager</h1>
 
-          <p style={{ margin: '8px 0 0', fontSize: 14, color: '#555', fontWeight: 500, letterSpacing: '0.2px' }}>
+          <p style={{ margin: '8px 0 0', fontSize: 14, color: '#555', fontWeight: 500 }}>
             AI-powered YouTube Tag Studio
           </p>
         </div>
 
+        {/* Live Activity Feed — YouTube-style animation */}
+        <div style={{
+          width: '100%', maxWidth: 360, marginBottom: 24,
+          animation: mounted ? 'fadeUp 0.6s ease 0.1s forwards' : 'none',
+          opacity: 0,
+        }}>
+          <ActivityFeed />
+        </div>
+
         {/* Active Feature Highlight */}
         <div style={{
-          width: '100%', maxWidth: 360, marginBottom: 28,
-          animation: mounted ? 'fadeUp 0.6s ease 0.15s forwards' : 'none',
+          width: '100%', maxWidth: 360, marginBottom: 24,
+          animation: mounted ? 'fadeUp 0.6s ease 0.2s forwards' : 'none',
           opacity: 0,
         }}>
           <div style={{
@@ -165,10 +207,7 @@ export default function LoginPage() {
             boxShadow: `0 0 30px ${FEATURES[activeFeature].color}11`,
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-              <div style={{
-                fontSize: 28, lineHeight: 1,
-                filter: 'drop-shadow(0 0 8px rgba(255,140,0,0.5))',
-              }}>{FEATURES[activeFeature].icon}</div>
+              <div style={{ fontSize: 28, lineHeight: 1 }}>{FEATURES[activeFeature].icon}</div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: FEATURES[activeFeature].color, marginBottom: 4 }}>
                   {FEATURES[activeFeature].title}
@@ -178,12 +217,10 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
-            {/* Dots */}
             <div style={{ display: 'flex', gap: 5, marginTop: 12, justifyContent: 'center' }}>
               {FEATURES.map((_, i) => (
                 <div key={i} onClick={() => setActiveFeature(i)} style={{
-                  width: i === activeFeature ? 18 : 5,
-                  height: 5, borderRadius: 3,
+                  width: i === activeFeature ? 18 : 5, height: 5, borderRadius: 3,
                   background: i === activeFeature ? FEATURES[activeFeature].color : '#222',
                   transition: 'all 0.3s ease', cursor: 'pointer',
                 }} />
@@ -226,13 +263,13 @@ export default function LoginPage() {
             ) : (
               <>
                 <GoogleIcon />
-                Google se Login karo
+                Continue with Google
               </>
             )}
           </button>
 
           <p style={{ textAlign: 'center', fontSize: 11, color: '#2a2a2a', marginTop: 12, lineHeight: 1.6 }}>
-            Login karne se tum hamare Terms aur Privacy Policy se agree karte ho
+            By signing in you agree to our Terms and Privacy Policy
           </p>
         </div>
 
@@ -243,7 +280,7 @@ export default function LoginPage() {
           animation: mounted ? 'fadeIn 1s ease 1s forwards' : 'none', opacity: 0,
         }}>
           <div style={{ fontSize: 10, color: '#2a2a2a', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
-            Features dekhne ke liye scroll karo
+            Scroll to explore features
           </div>
           <div style={{ fontSize: 16, color: '#333', animation: 'float 1.5s ease-in-out infinite' }}>↓</div>
         </div>
@@ -254,31 +291,24 @@ export default function LoginPage() {
 
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ fontSize: 10, fontWeight: 800, color: '#ff8c0066', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 8 }}>
-            Ye sab kar sakte ho
+            Everything you need
           </div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: '#ddd', letterSpacing: '-0.5px' }}>
-            Ek Tool, Sab Kaam
+            One Tool, All Tasks
           </h2>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {FEATURES.map((f, i) => (
-            <div
-              key={i}
-              className="feature-card"
-              style={{
-                background: '#0c0c0c',
-                border: '1px solid #161616',
-                borderRadius: 14, padding: '14px 16px',
-                display: 'flex', alignItems: 'flex-start', gap: 14,
-              }}
-            >
+            <div key={i} className="feature-card" style={{
+              background: '#0c0c0c', border: '1px solid #161616',
+              borderRadius: 14, padding: '14px 16px',
+              display: 'flex', alignItems: 'flex-start', gap: 14,
+            }}>
               <div style={{
                 width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-                background: `${f.color}11`,
-                border: `1px solid ${f.color}22`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 20,
+                background: `${f.color}11`, border: `1px solid ${f.color}22`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
               }}>{f.icon}</div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd', marginBottom: 4 }}>{f.title}</div>
@@ -292,7 +322,7 @@ export default function LoginPage() {
         <div style={{ marginTop: 40 }}>
           <div style={{ textAlign: 'center', marginBottom: 22 }}>
             <div style={{ fontSize: 10, fontWeight: 800, color: '#ff8c0066', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 8 }}>
-              Kaise kaam karta hai
+              How it works
             </div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: '#ddd', letterSpacing: '-0.5px' }}>
               3 Steps, Done
@@ -301,12 +331,11 @@ export default function LoginPage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {[
-              { step: '01', title: 'Google se Login karo', desc: 'Ek click mein — koi password nahi', color: '#ff8c00' },
-              { step: '02', title: 'YouTube Connect karo', desc: 'OAuth se secure connection — Settings mein', color: '#4488ff' },
-              { step: '03', title: 'AI Tags Generate karo', desc: 'Video select karo → Generate → Update!', color: '#00cc66' },
+              { step: '01', title: 'Sign in with Google',   desc: 'One click — no password needed',           color: '#ff8c00' },
+              { step: '02', title: 'Connect YouTube',       desc: 'Secure OAuth connection — in Settings',    color: '#4488ff' },
+              { step: '03', title: 'Generate AI Tags',      desc: 'Select video → Generate → Update!',        color: '#00cc66' },
             ].map((s, i) => (
               <div key={i} style={{ display: 'flex', gap: 16, position: 'relative' }}>
-                {/* Line connector */}
                 {i < 2 && (
                   <div style={{
                     position: 'absolute', left: 19, top: 44, width: 2, height: 'calc(100% - 12px)',
@@ -337,10 +366,10 @@ export default function LoginPage() {
         }}>
           <div style={{ fontSize: 28, marginBottom: 8 }}>🚀</div>
           <div style={{ fontSize: 15, fontWeight: 900, color: '#eee', marginBottom: 6 }}>
-            Shuru karo aaj se
+            Get started today
           </div>
           <div style={{ fontSize: 12, color: '#555', marginBottom: 20, lineHeight: 1.6 }}>
-            Free hai — bas Google account chahiye
+            It's free — just a Google account required
           </div>
           <button
             className="login-btn"
@@ -356,7 +385,7 @@ export default function LoginPage() {
               boxShadow: '0 4px 20px rgba(255,140,0,0.25)',
             }}
           >
-            {loading ? '⏳ Redirecting...' : '🎬 Google se Login karo'}
+            {loading ? '⏳ Redirecting...' : '🎬 Continue with Google'}
           </button>
         </div>
 

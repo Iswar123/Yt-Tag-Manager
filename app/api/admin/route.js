@@ -1,9 +1,10 @@
 // app/api/admin/route.js
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 
+// Admin verify: normal client se current user check karo
 async function verifyAdmin(supabase) {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
@@ -13,7 +14,9 @@ async function verifyAdmin(supabase) {
 
 export async function GET(req) {
   try {
-    const supabase = createClient();
+    const supabase      = createClient();       // cookie-based auth check
+    const adminSupabase = createAdminClient();  // service role — RLS bypass
+
     const admin = await verifyAdmin(supabase);
     if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
@@ -21,18 +24,19 @@ export async function GET(req) {
     const action = searchParams.get('action') || 'users';
 
     if (action === 'users') {
-      // Supabase auth.users + user_credentials join
-      const { data: credentials, error } = await supabase
+      // Service role se user_credentials read karo — RLS bypass
+      const { data: credentials, error } = await adminSupabase
         .from('user_credentials')
-        .select('user_id, channel_id, is_enabled, daily_limit, total_limit, daily_used, total_used, last_reset_at, joined_at, updated_at');
+        .select('user_id, channel_id, is_enabled, daily_limit, total_limit, daily_used, total_used, last_reset_at, joined_at, updated_at')
+        .order('updated_at', { ascending: false });
 
-      if (error) throw new Error(error.message);
+      if (error) throw new Error('DB error: ' + error.message);
 
-      // Auth users fetch karo (email ke liye)
-      const { data: authData } = await supabase.auth.admin.listUsers();
+      // auth.admin.listUsers — service role se hi kaam karta hai
+      const { data: authData, error: authError } = await adminSupabase.auth.admin.listUsers({ perPage: 1000 });
+      if (authError) throw new Error('Auth error: ' + authError.message);
       const authUsers = authData?.users || [];
 
-      // Merge karo
       const users = (credentials || []).map(cred => {
         const authUser = authUsers.find(u => u.id === cred.user_id);
         return {
@@ -40,7 +44,7 @@ export async function GET(req) {
           email:       authUser?.email || 'Unknown',
           avatar:      authUser?.user_metadata?.avatar_url || null,
           name:        authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || 'User',
-          channel_id:  cred.channel_id,
+          // channel_id aur refresh_token intentionally hide — security
           is_enabled:  cred.is_enabled ?? true,
           daily_limit: cred.daily_limit ?? 20,
           total_limit: cred.total_limit ?? 500,
@@ -55,15 +59,17 @@ export async function GET(req) {
     }
 
     if (action === 'stats') {
-      const { data: creds } = await supabase
+      const { data: creds, error } = await adminSupabase
         .from('user_credentials')
-        .select('is_enabled, daily_used, total_used, daily_limit, total_limit');
+        .select('is_enabled, daily_used, total_used');
 
-      const total      = creds?.length || 0;
-      const active     = creds?.filter(c => c.is_enabled !== false).length || 0;
-      const disabled   = total - active;
-      const totalTags  = creds?.reduce((s, c) => s + (c.total_used || 0), 0) || 0;
-      const todayTags  = creds?.reduce((s, c) => s + (c.daily_used || 0), 0) || 0;
+      if (error) throw new Error(error.message);
+
+      const total     = creds?.length || 0;
+      const active    = creds?.filter(c => c.is_enabled !== false).length || 0;
+      const disabled  = total - active;
+      const totalTags = creds?.reduce((s, c) => s + (c.total_used || 0), 0) || 0;
+      const todayTags = creds?.reduce((s, c) => s + (c.daily_used || 0), 0) || 0;
 
       return NextResponse.json({ total, active, disabled, totalTags, todayTags });
     }
@@ -77,20 +83,18 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const supabase = createClient();
+    const supabase      = createClient();
+    const adminSupabase = createAdminClient();
+
     const admin = await verifyAdmin(supabase);
     if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
     const body = await req.json();
     const { action, user_id } = body;
-
     if (!user_id) return NextResponse.json({ error: 'user_id required' }, { status: 400 });
 
-    // Daily reset check
-    await supabase.rpc('reset_daily_usage');
-
     if (action === 'toggle_enable') {
-      const { data: current } = await supabase
+      const { data: current } = await adminSupabase
         .from('user_credentials')
         .select('is_enabled')
         .eq('user_id', user_id)
@@ -98,16 +102,17 @@ export async function POST(req) {
 
       const newState = !(current?.is_enabled ?? true);
 
-      await supabase
+      const { error } = await adminSupabase
         .from('user_credentials')
         .upsert({ user_id, is_enabled: newState, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
 
-      // Log
-      await supabase.from('admin_logs').insert({
-        admin_email: admin.email,
-        action: newState ? 'enable_user' : 'disable_user',
-        target_user: user_id,
-        details: { is_enabled: newState },
+      if (error) throw new Error(error.message);
+
+      await adminSupabase.from('admin_logs').insert({
+        admin_email:  admin.email,
+        action:       newState ? 'enable_user' : 'disable_user',
+        target_user:  user_id,
+        details:      { is_enabled: newState },
       });
 
       return NextResponse.json({ success: true, is_enabled: newState });
@@ -116,41 +121,45 @@ export async function POST(req) {
     if (action === 'set_limits') {
       const { daily_limit, total_limit } = body;
       if (daily_limit == null || total_limit == null)
-        return NextResponse.json({ error: 'daily_limit aur total_limit dono chahiye' }, { status: 400 });
+        return NextResponse.json({ error: 'daily_limit and total_limit both required' }, { status: 400 });
 
-      await supabase
+      const { error } = await adminSupabase
         .from('user_credentials')
         .upsert({
           user_id,
           daily_limit: parseInt(daily_limit),
           total_limit: parseInt(total_limit),
-          updated_at: new Date().toISOString(),
+          updated_at:  new Date().toISOString(),
         }, { onConflict: 'user_id' });
 
-      await supabase.from('admin_logs').insert({
+      if (error) throw new Error(error.message);
+
+      await adminSupabase.from('admin_logs').insert({
         admin_email: admin.email,
-        action: 'set_limits',
+        action:      'set_limits',
         target_user: user_id,
-        details: { daily_limit, total_limit },
+        details:     { daily_limit, total_limit },
       });
 
       return NextResponse.json({ success: true });
     }
 
     if (action === 'reset_usage') {
-      await supabase
+      const { error } = await adminSupabase
         .from('user_credentials')
         .upsert({
           user_id,
-          daily_used: 0,
-          total_used: 0,
+          daily_used:    0,
+          total_used:    0,
           last_reset_at: new Date().toISOString().split('T')[0],
-          updated_at: new Date().toISOString(),
+          updated_at:    new Date().toISOString(),
         }, { onConflict: 'user_id' });
 
-      await supabase.from('admin_logs').insert({
+      if (error) throw new Error(error.message);
+
+      await adminSupabase.from('admin_logs').insert({
         admin_email: admin.email,
-        action: 'reset_usage',
+        action:      'reset_usage',
         target_user: user_id,
       });
 

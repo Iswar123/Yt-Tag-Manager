@@ -1,9 +1,9 @@
 // app/dashboard/page.js
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 function formatSubscribers(count) {
   const n = parseInt(count) || 0;
@@ -111,8 +111,17 @@ function QuotaBar({ used }) {
 }
 
 export default function DashboardPage() {
-  const supabase = createClient();
-  const router   = useRouter();
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#080808' }} />}>
+      <DashboardInner />
+    </Suspense>
+  );
+}
+
+function DashboardInner() {
+  const supabase     = createClient();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
 
   const [user,         setUser]         = useState(null);
   const [creds,        setCreds]        = useState(null);
@@ -141,6 +150,25 @@ export default function DashboardPage() {
     setToast({ msg, type });
     setTimeout(() => setToast({ msg: '', type: 'info' }), 3500);
   }
+
+  // ── OAuth redirect se wapas aane par handle karo ──────────────
+  useEffect(() => {
+    const ytConnected = searchParams.get('yt_connected');
+    const ytError     = searchParams.get('yt_error');
+    if (ytConnected === 'true') {
+      showToast('✅ YouTube connect ho gaya!', 'success');
+      router.replace('/dashboard');
+    } else if (ytError) {
+      const msgs = {
+        no_code:          'Google se code nahi mila — phir try karo.',
+        no_refresh_token: 'Refresh token nahi mila. Google Cloud Console mein redirect URI check karo.',
+        env_missing:      'Server config error — Vercel env variables set karo.',
+        access_denied:    'Access deny kiya — phir se try karo.',
+      };
+      showToast('❌ ' + (msgs[ytError] || decodeURIComponent(ytError)), 'error');
+      router.replace('/dashboard');
+    }
+  }, [searchParams]);
 
   useEffect(() => { init(); }, []);
 

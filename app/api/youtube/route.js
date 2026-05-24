@@ -11,18 +11,37 @@ async function getUserCredentials() {
 
   const { data, error } = await supabase
     .from('user_credentials')
-    .select('yt_refresh_token, channel_id')
+    .select('yt_refresh_token')
     .eq('user_id', user.id)
     .single();
 
   if (error || !data) throw new Error('Pehle YouTube connect karo Settings mein');
   if (!data.yt_refresh_token) throw new Error('YouTube connect nahi hai — Settings mein Connect YouTube dabao');
 
+  // Active channel user_channels se lo
+  const { data: activeChannel } = await supabase
+    .from('user_channels')
+    .select('channel_id')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .single();
+
+  // Fallback: user_credentials ka channel_id (purana data / single channel case)
+  let channelId = activeChannel?.channel_id || null;
+  if (!channelId) {
+    const { data: creds } = await supabase
+      .from('user_credentials')
+      .select('channel_id')
+      .eq('user_id', user.id)
+      .single();
+    channelId = creds?.channel_id || null;
+  }
+
   const clientId     = process.env.YOUTUBE_CLIENT_ID;
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
   if (!clientId || !clientSecret) throw new Error('Server config error: YouTube credentials missing');
 
-  return { clientId, clientSecret, refreshToken: data.yt_refresh_token, channelId: data.channel_id, userId: user.id, supabase };
+  return { clientId, clientSecret, refreshToken: data.yt_refresh_token, channelId, userId: user.id, supabase };
 }
 
 // ── API Key Rotation ──────────────────────────────────────────────

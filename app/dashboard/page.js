@@ -64,21 +64,25 @@ function QuotaBar({ used }) {
   const pct   = Math.min((used / TOTAL) * 100, 100);
   const color = pct > 80 ? '#ff4444' : pct > 50 ? '#ff8c00' : '#00cc66';
 
-  const now  = new Date();
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Los_Angeles',
-    hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false,
-  }).formatToParts(now);
-  const ptH  = parseInt(parts.find(p => p.type === 'hour').value);
-  const ptMi = parseInt(parts.find(p => p.type === 'minute').value);
-  const ptS  = parseInt(parts.find(p => p.type === 'second').value);
+  const now = new Date();
 
-  // PT mein abhi kitne seconds ho chuke hain aaj
-  const secsDone = ptH * 3600 + ptMi * 60 + ptS;
-  // Ek din = 86400 seconds, toh next midnight tak bacha
-  const secsLeft = 86400 - secsDone;
-  const hh = Math.floor(secsLeft / 3600);
-  const mm = Math.floor((secsLeft % 3600) / 60);
+  // IST = UTC + 5:30
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const istMs = utcMs + 5.5 * 3600000;
+  const istNow = new Date(istMs);
+
+  // Aaj ki IST 1:30 AM
+  const resetToday = new Date(istNow);
+  resetToday.setHours(1, 30, 0, 0);
+
+  // Agar 1:30 AM nikal gayi toh kal ki 1:30 AM
+  if (istNow >= resetToday) {
+    resetToday.setDate(resetToday.getDate() + 1);
+  }
+
+  const diffMs = resetToday - istNow;
+  const hh = Math.floor(diffMs / 3600000);
+  const mm = Math.floor((diffMs % 3600000) / 60000);
 
   return (
     <div style={{

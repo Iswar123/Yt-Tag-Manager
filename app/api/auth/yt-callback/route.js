@@ -33,28 +33,49 @@ export async function GET(request) {
     });
     const tokenData = await tokenRes.json();
 
-    if (tokenData.error)        return NextResponse.redirect(`${origin}/settings?yt_error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`);
+    if (tokenData.error)          return NextResponse.redirect(`${origin}/settings?yt_error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`);
     if (!tokenData.refresh_token) return NextResponse.redirect(`${origin}/settings?yt_error=no_refresh_token`);
 
-    // Step 2: access_token se channel ID fetch karo
-    let channelId = null;
+    // Step 2: Is Gmail se saare channels fetch karo
+    let channels = [];
     try {
-      const chRes  = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true', {
+      const chRes  = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true&maxResults=50', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       });
       const chData = await chRes.json();
-      channelId = chData.items?.[0]?.id || null;
+      channels = (chData.items || []).map(ch => ({
+        channel_id: ch.id,
+        title:      ch.snippet?.title || '',
+        avatar_url: ch.snippet?.thumbnails?.medium?.url || ch.snippet?.thumbnails?.default?.url || '',
+      }));
     } catch (_) {}
 
-    // Step 3: Supabase mein save karo
+    const firstChannelId = channels[0]?.channel_id || null;
+
+    // Step 3: Token save karo user_credentials mein
     await supabase
       .from('user_credentials')
       .upsert({
         user_id:          user.id,
         yt_refresh_token: tokenData.refresh_token,
-        channel_id:       channelId,
+        channel_id:       firstChannelId,
         updated_at:       new Date().toISOString(),
       }, { onConflict: 'user_id' });
+
+    // Step 4: user_channels mein saare channels save karo
+    // Pehle existing channels delete karo
+    await supabase.from('user_channels').delete().eq('user_id', user.id);
+
+    if (channels.length > 0) {
+      const rows = channels.map((ch, i) => ({
+        user_id:    user.id,
+        channel_id: ch.channel_id,
+        title:      ch.title,
+        avatar_url: ch.avatar_url,
+        is_active:  i === 0, // pehla channel default active
+      }));
+      await supabase.from('user_channels').insert(rows);
+    }
 
     return NextResponse.redirect(`${origin}/settings?yt_connected=true`);
 

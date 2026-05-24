@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
-// ── Fix 9: formatSubscribers moved to top level ───────────────────
 function formatSubscribers(count) {
   const n = parseInt(count) || 0;
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
@@ -15,7 +14,6 @@ function formatSubscribers(count) {
   return n.toLocaleString();
 }
 
-// ── Fix 8: MODEL_MAP — provider hardcode hataya ───────────────────
 const MODEL_MAP = {
   groq:       'llama-3.3-70b-versatile',
   openrouter: 'openai/gpt-4o-mini',
@@ -47,6 +45,19 @@ function extractVideoId(input) {
   return match ? match[1] : input.trim();
 }
 
+// ── Skeleton block reused in multiple places ──────────────────────
+function SkeletonBlock({ width = '100%', height = 14, radius = 6, style = {} }) {
+  return (
+    <div style={{
+      width, height, borderRadius: radius,
+      background: 'linear-gradient(90deg,#1a1a1a,#242424,#1a1a1a)',
+      backgroundSize: '200%',
+      animation: 'shimmer 1.2s infinite',
+      ...style,
+    }} />
+  );
+}
+
 export default function DashboardPage() {
   const supabase = createClient();
   const router   = useRouter();
@@ -61,11 +72,10 @@ export default function DashboardPage() {
   const [generating,    setGenerating]    = useState(false);
   const [status,        setStatus]        = useState('idle');
 
-  // Fix 2: urlInput lives in parent, passed down to SearchSection
   const [urlInput, setUrlInput] = useState('');
   const [fetching, setFetching] = useState(false);
 
-  const [toast, setToast] = useState({ msg: '', type: 'info' });
+  const [toast,        setToast]        = useState({ msg: '', type: 'info' });
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const tagList  = tags.split(',').map(t => t.trim()).filter(Boolean);
@@ -93,15 +103,12 @@ export default function DashboardPage() {
 
     if (!data || !data.yt_refresh_token || (!data.ai_api_key && !data.openrouter_api_key)) {
       setCreds(null);
-      setCredsLoading(false);
-      return;
+    } else {
+      setCreds(data);
     }
-
-    setCreds(data);
     setCredsLoading(false);
   }
 
-  // Fix 2: handleFetch lives in parent
   async function handleFetch() {
     const id = extractVideoId(urlInput);
     if (!id) { showToast('⚠️ Video URL ya ID daalo!', 'warn'); return; }
@@ -177,7 +184,7 @@ export default function DashboardPage() {
   function handleReset() {
     setSelectedVideo(null);
     setTags('');
-    setUrlInput(''); // Fix 2: parent resets urlInput
+    setUrlInput('');
     setStatus('idle');
   }
 
@@ -200,16 +207,13 @@ export default function DashboardPage() {
   };
   const tc = toastColors[toast.type] || toastColors.info;
 
-  // ── Fix 1: credsLoading — proper early return, no flicker ────────
+  // ── credsLoading: full-screen spinner, Topbar nahi dikhta ────────
   if (credsLoading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
-        <Topbar user={null} onSettings={() => {}} onLogout={handleLogout} />
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, border: '3px solid #1a1a1a', borderTop: '3px solid #ff8c00', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            <span style={{ fontSize: 11, color: '#333', fontWeight: 700 }}>Loading...</span>
-          </div>
+      <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 36, height: 36, border: '3px solid #1a1a1a', borderTop: '3px solid #ff8c00', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <span style={{ fontSize: 11, color: '#333', fontWeight: 700 }}>Loading...</span>
         </div>
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -228,8 +232,8 @@ export default function DashboardPage() {
           </p>
           {[
             { icon: '🔑', label: 'Google Cloud Console', sub: 'OAuth 2.0 Client banao' },
-            { icon: '🤖', label: 'AI API Key', sub: 'Groq ya OpenRouter se' },
-            { icon: '🚀', label: 'Done!', sub: 'Tags generate karo AI se' },
+            { icon: '🤖', label: 'AI API Key',           sub: 'Groq ya OpenRouter se' },
+            { icon: '🚀', label: 'Done!',                sub: 'Tags generate karo AI se' },
           ].map((step, i) => (
             <div key={i} style={{ width: '100%', maxWidth: 320, background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
               <div style={{ width: 32, height: 32, background: '#1a1a1a', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{step.icon}</div>
@@ -246,13 +250,12 @@ export default function DashboardPage() {
         </div>
         {settingsOpen && (
           <SettingsDrawer
-            supabase={supabase}
-            user={user}
+            supabase={supabase} user={user}
             onClose={() => { setSettingsOpen(false); refreshCreds(); }}
             showToast={showToast}
           />
         )}
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <GlobalStyles />
       </div>
     );
   }
@@ -282,7 +285,6 @@ export default function DashboardPage() {
 
       <div style={{ flex: 1, padding: '14px 12px 40px', maxWidth: 600, margin: '0 auto', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* Fix 2: urlInput + fetching + handleFetch passed from parent */}
         {!selectedVideo && (
           <SearchSection
             urlInput={urlInput}
@@ -365,57 +367,23 @@ export default function DashboardPage() {
 
       {settingsOpen && (
         <SettingsDrawer
-          supabase={supabase}
-          user={user}
+          supabase={supabase} user={user}
           onClose={() => { setSettingsOpen(false); refreshCreds(); }}
           showToast={showToast}
         />
       )}
 
-      <style>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); }
-          to   { transform: translateX(0); }
-        }
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to   { transform: translateY(0); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-        @keyframes shimmer {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        @keyframes pulse {
-          0%,100% { box-shadow: 0 0 30px rgba(255,140,0,0.25); }
-          50%      { box-shadow: 0 0 50px rgba(255,140,0,0.5); }
-        }
-        @keyframes btnGlow {
-          0%,100% { box-shadow: 0 4px 20px rgba(255,140,0,0.3); }
-          50%      { box-shadow: 0 4px 32px rgba(255,140,0,0.55); }
-        }
-        @keyframes shine {
-          0%   { left: -100%; }
-          100% { left: 200%; }
-        }
-      `}</style>
+      <GlobalStyles />
     </div>
   );
 }
 
-// ── Fix 2: SearchSection — controlled, urlInput + fetching + onFetch from parent ──
+// ── SearchSection ─────────────────────────────────────────────────
 function SearchSection({ urlInput, setUrlInput, fetching, onFetch, showToast }) {
-  const [focused,       setFocused]       = useState(false);
-  const [typeText,      setTypeText]      = useState('');
-  const [typeIndex,     setTypeIndex]     = useState(0);
-  const [typing,        setTyping]        = useState(true);
+  const [focused,        setFocused]        = useState(false);
+  const [typeText,       setTypeText]       = useState('');
+  const [typeIndex,      setTypeIndex]      = useState(0);
+  const [typing,         setTyping]         = useState(true);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const typeTimer = useRef(null);
 
@@ -478,14 +446,12 @@ function SearchSection({ urlInput, setUrlInput, fetching, onFetch, showToast }) 
             onBlur={() => setFocused(false)}
             placeholder={focused ? 'Paste karo ya type karo...' : (typeText || 'YouTube URL daalo...')}
             style={{
-              width: '100%',
-              background: '#1a1a1a',
+              width: '100%', background: '#1a1a1a',
               border: `1px solid ${focused ? '#ff8c0055' : '#2a2a2a'}`,
               borderRadius: 12, padding: '13px 44px 13px 16px',
               fontSize: 13, color: '#fff', outline: 'none',
               boxSizing: 'border-box', fontFamily: 'inherit',
-              transition: 'border-color 0.2s',
-              caretColor: '#ff8c00',
+              transition: 'border-color 0.2s', caretColor: '#ff8c00',
             }}
           />
           {hasInput && (
@@ -500,11 +466,7 @@ function SearchSection({ urlInput, setUrlInput, fetching, onFetch, showToast }) 
           style={{
             width: '100%', padding: '14px', borderRadius: 12, fontSize: 13, fontWeight: 800,
             cursor: fetching || !hasInput ? 'not-allowed' : 'pointer',
-            background: fetching
-              ? 'linear-gradient(135deg,#1a0800,#100500)'
-              : hasInput
-                ? 'linear-gradient(135deg,#ff8c00,#ff4400)'
-                : '#1a1a1a',
+            background: fetching ? 'linear-gradient(135deg,#1a0800,#100500)' : hasInput ? 'linear-gradient(135deg,#ff8c00,#ff4400)' : '#1a1a1a',
             border: fetching ? '1px solid #ff8c0033' : hasInput ? 'none' : '1px solid #2a2a2a',
             color: fetching ? '#ff8c0088' : hasInput ? '#fff' : '#444',
             boxShadow: hasInput && !fetching ? '0 4px 24px rgba(255,140,0,0.4)' : 'none',
@@ -518,11 +480,7 @@ function SearchSection({ urlInput, setUrlInput, fetching, onFetch, showToast }) 
           )}
           {fetching ? (
             <><span style={{ display: 'inline-block', animation: 'spin 0.8s linear infinite' }}>⏳</span> Fetching...</>
-          ) : hasInput ? (
-            <>🚀 Fetch Video</>
-          ) : (
-            <>🔍 Fetch Video</>
-          )}
+          ) : hasInput ? <>🚀 Fetch Video</> : <>🔍 Fetch Video</>}
         </button>
       </div>
 
@@ -537,36 +495,36 @@ function SearchSection({ urlInput, setUrlInput, fetching, onFetch, showToast }) 
 
 // ── Settings Drawer ───────────────────────────────────────────────
 function SettingsDrawer({ supabase, user, onClose, showToast }) {
+  // dataLoading: jab tak DB se creds fetch nahi hote, YouTube section skeleton dikhao
+  const [dataLoading,    setDataLoading]    = useState(true);
   const [channelLoading, setChannelLoading] = useState(false);
 
   const [form, setForm] = useState({
-    channel_id:          '',
-    yt_refresh_token:    '',
-    ai_provider:         'openrouter',
-    groq_api_key:        '',
-    openrouter_api_key:  '',
+    channel_id:         '',
+    yt_refresh_token:   '',
+    ai_provider:        'openrouter',
+    groq_api_key:       '',
+    openrouter_api_key: '',
   });
 
   const [showGroqKey,       setShowGroqKey]       = useState(false);
   const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
   const [channelInfo, setChannelInfo] = useState({ name: '', avatar: '', subscribers: '', subscriberHidden: false });
 
-  const [apiKeys,    setApiKeys]    = useState([]);
-  const [newKey,     setNewKey]     = useState('');
-  const [newLabel,   setNewLabel]   = useState('');
-  const [addingKey,  setAddingKey]  = useState(false);
-  const [showAddKey, setShowAddKey] = useState(false);
+  const [apiKeys,          setApiKeys]          = useState([]);
+  const [newKey,           setNewKey]           = useState('');
+  const [newLabel,         setNewLabel]         = useState('');
+  const [addingKey,        setAddingKey]        = useState(false);
+  const [showAddKey,       setShowAddKey]       = useState(false);
   const [showApiKeysModal, setShowApiKeysModal] = useState(false);
 
-  // Fix 3: providerSaveTimer ref — cleanup on unmount
   const providerSaveTimer = useRef(null);
-  useEffect(() => {
-    return () => clearTimeout(providerSaveTimer.current);
-  }, []);
+  useEffect(() => { return () => clearTimeout(providerSaveTimer.current); }, []);
 
   useEffect(() => { loadData(); loadApiKeys(); }, []);
 
   async function loadData() {
+    setDataLoading(true);
     const { data } = await supabase
       .from('user_credentials')
       .select('*')
@@ -575,13 +533,14 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
     if (data) {
       setForm({
-        channel_id:         data.channel_id        || '',
-        yt_refresh_token:   data.yt_refresh_token  || '',
-        ai_provider:        data.ai_provider       || 'openrouter',
-        groq_api_key:       data.ai_api_key        || '',
+        channel_id:         data.channel_id         || '',
+        yt_refresh_token:   data.yt_refresh_token   || '',
+        ai_provider:        data.ai_provider        || 'openrouter',
+        groq_api_key:       data.ai_api_key         || '',
         openrouter_api_key: data.openrouter_api_key || '',
       });
 
+      // Channel info fetch — only if YT connected
       if (data.yt_refresh_token) {
         setChannelLoading(true);
         try {
@@ -590,8 +549,8 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
           if (ytData.channelTitle) {
             setChannelInfo({
               name:             ytData.channelTitle,
-              avatar:           ytData.channelAvatar || '',
-              subscribers:      ytData.subscriberCount || '0',
+              avatar:           ytData.channelAvatar    || '',
+              subscribers:      ytData.subscriberCount  || '0',
               subscriberHidden: ytData.subscriberHidden || false,
             });
           }
@@ -599,6 +558,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
         setChannelLoading(false);
       }
     }
+    setDataLoading(false);
   }
 
   async function loadApiKeys() {
@@ -610,42 +570,29 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   async function handleProviderSwitch(provider) {
     setForm(f => ({ ...f, ai_provider: provider }));
     clearTimeout(providerSaveTimer.current);
-    // Fix 3: timer properly stored in ref, cleanup on unmount handles it
     providerSaveTimer.current = setTimeout(async () => {
       await supabase.from('user_credentials').upsert({
-        user_id:     user.id,
-        ai_provider: provider,
-        updated_at:  new Date().toISOString(),
+        user_id: user.id, ai_provider: provider, updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
       showToast('✅ Provider save ho gaya!', 'success');
     }, 300);
   }
 
   async function handleKeyBlur(field) {
-    const upsertData = {
-      user_id:    user.id,
-      updated_at: new Date().toISOString(),
-    };
+    const upsertData = { user_id: user.id, updated_at: new Date().toISOString() };
     if (field === 'groq')       upsertData.ai_api_key         = form.groq_api_key;
     if (field === 'openrouter') upsertData.openrouter_api_key = form.openrouter_api_key;
-
-    const { error } = await supabase
-      .from('user_credentials')
-      .upsert(upsertData, { onConflict: 'user_id' });
-
+    const { error } = await supabase.from('user_credentials').upsert(upsertData, { onConflict: 'user_id' });
     if (!error) showToast('✅ Key save ho gayi!', 'success');
     else        showToast('❌ Save fail: ' + error.message, 'error');
   }
 
   async function handleDisconnect() {
     await supabase.from('user_credentials').upsert({
-      user_id:          user.id,
-      yt_refresh_token: null,
-      channel_id:       null,
-      updated_at:       new Date().toISOString(),
+      user_id: user.id, yt_refresh_token: null, channel_id: null, updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' });
     setForm(p => ({ ...p, yt_refresh_token: '', channel_id: '' }));
-    setChannelInfo({ name: '', avatar: '' });
+    setChannelInfo({ name: '', avatar: '', subscribers: '', subscriberHidden: false });
     showToast('🔌 YouTube disconnect ho gaya!', 'warn');
   }
 
@@ -689,7 +636,8 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
     loadApiKeys();
   }
 
-  const ytConnected   = !!form.yt_refresh_token;
+  // ytConnected: dataLoading khatam hone ke baad hi decide hoga
+  const ytConnected   = !dataLoading && !!form.yt_refresh_token;
   const displayAvatar = (ytConnected && channelInfo.avatar)
     ? channelInfo.avatar
     : user?.user_metadata?.avatar_url || '';
@@ -699,20 +647,18 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
   return (
     <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, animation: 'fadeIn 0.2s ease' }}
-      />
+      <div onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, animation: 'fadeIn 0.2s ease' }} />
 
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 101,
         width: '88vw', maxWidth: 420,
         background: '#0a0a0a', borderLeft: '1px solid #1e1e1e',
-        borderRadius: '20px 0 0 20px',
-        overflowY: 'auto',
+        borderRadius: '20px 0 0 20px', overflowY: 'auto',
         animation: 'slideInRight 0.28s cubic-bezier(0.32,0.72,0,1)',
         paddingBottom: 32,
       }}>
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', position: 'sticky', top: 0, background: '#0a0a0a', zIndex: 2, borderBottom: '1px solid #141414' }}>
           <span style={{ fontSize: 15, fontWeight: 900, color: '#ff8c00' }}>⚙️ Settings</span>
           <button onClick={onClose}
@@ -721,17 +667,17 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
           </button>
         </div>
 
-        <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {/* User info */}
-          {channelLoading ? (
+          {/* ── User info card ── */}
+          {dataLoading || channelLoading ? (
             <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(90deg,#1a1a1a,#242424,#1a1a1a)', backgroundSize: '200%', animation: 'shimmer 1.2s infinite', flexShrink: 0 }} />
+              <SkeletonBlock width={44} height={44} radius={22} style={{ flexShrink: 0 }} />
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ height: 13, width: '55%', borderRadius: 6, background: 'linear-gradient(90deg,#1a1a1a,#242424,#1a1a1a)', backgroundSize: '200%', animation: 'shimmer 1.2s infinite' }} />
-                <div style={{ height: 10, width: '40%', borderRadius: 6, background: 'linear-gradient(90deg,#1a1a1a,#242424,#1a1a1a)', backgroundSize: '200%', animation: 'shimmer 1.2s infinite' }} />
+                <SkeletonBlock width="55%" />
+                <SkeletonBlock width="40%" height={10} />
               </div>
-              <div style={{ height: 24, width: 80, borderRadius: 20, background: 'linear-gradient(90deg,#1a1a1a,#242424,#1a1a1a)', backgroundSize: '200%', animation: 'shimmer 1.2s infinite' }} />
+              <SkeletonBlock width={80} height={24} radius={20} style={{ flexShrink: 0 }} />
             </div>
           ) : (
             <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -743,16 +689,13 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                 )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {displayName}
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
                 <div style={{ fontSize: 11, color: '#555', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ytConnected
                     ? channelInfo.subscriberHidden
                       ? '🔒 Subscribers hidden'
                       : `👥 ${formatSubscribers(channelInfo.subscribers)} subscribers`
-                    : user?.email
-                  }
+                    : user?.email}
                 </div>
               </div>
               <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', flexShrink: 0, color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
@@ -761,9 +704,12 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             </div>
           )}
 
-          {/* YouTube Section */}
+          {/* ── YouTube section ── */}
           <DrawerSection title="🎬 YouTube">
-            {ytConnected ? (
+            {dataLoading ? (
+              // Skeleton jab tak DB se pata nahi YT connected hai ya nahi
+              <SkeletonBlock height={48} radius={12} />
+            ) : ytConnected ? (
               <>
                 <div style={{ background: '#001a08', border: '1px solid #00cc6622', borderRadius: 12, padding: '12px 14px' }}>
                   <div style={{ fontSize: 11, color: '#44bb66', fontWeight: 700, marginBottom: 8 }}>✅ YouTube Connected</div>
@@ -793,7 +739,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             )}
           </DrawerSection>
 
-          {/* AI Section */}
+          {/* ── AI Settings ── */}
           <DrawerSection title="🤖 AI Settings">
             <div style={{ display: 'flex', gap: 8 }}>
               {['openrouter', 'groq'].map(p => (
@@ -854,19 +800,17 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
             <div style={{ background: '#080808', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#2a2a2a', lineHeight: 1.6 }}>
               Active model:{' '}
-              {/* Fix 8: MODEL_MAP used here too */}
               <span style={{ color: form.ai_provider === 'groq' ? '#00cc6655' : '#ff8c0055' }}>
                 {MODEL_MAP[form.ai_provider] ?? MODEL_MAP['openrouter']}
               </span>
             </div>
           </DrawerSection>
 
-          {/* YouTube API Keys */}
+          {/* ── YouTube API Keys ── */}
           <DrawerSection title="🔑 YouTube API Keys (Quota Rotation)">
             <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6, background: '#0a0a0a', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px' }}>
               💡 Multiple projects ke API keys add karo — quota khatam hone par automatically next key use hogi
             </div>
-
             <button onClick={() => setShowApiKeysModal(true)}
               style={{ width: '100%', background: '#0a0a0a', border: '1px solid #ff8c0033', color: '#ff8c00', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               🔑 Manage API Keys
@@ -876,7 +820,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             </button>
           </DrawerSection>
 
-          {/* API Keys Modal */}
+          {/* ── API Keys Modal ── */}
           {showApiKeysModal && (
             <>
               <div onClick={() => { setShowApiKeysModal(false); setShowAddKey(false); setNewKey(''); setNewLabel(''); }}
@@ -885,8 +829,8 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
               <div style={{
                 position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
                 background: '#0e0e0e', borderTop: '1px solid #222',
-                borderRadius: '20px 20px 0 0',
-                maxHeight: '75vh', display: 'flex', flexDirection: 'column',
+                borderRadius: '20px 20px 0 0', maxHeight: '75vh',
+                display: 'flex', flexDirection: 'column',
                 animation: 'slideUp 0.25s cubic-bezier(0.32,0.72,0,1)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', borderBottom: '1px solid #181818', flexShrink: 0 }}>
@@ -902,11 +846,8 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
                 <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {apiKeys.length === 0 && !showAddKey && (
-                    <div style={{ textAlign: 'center', padding: '24px 0', color: '#333', fontSize: 12 }}>
-                      Koi key add nahi hui abhi
-                    </div>
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: '#333', fontSize: 12 }}>Koi key add nahi hui abhi</div>
                   )}
-
                   {apiKeys.map(k => (
                     <div key={k.id} style={{ background: '#0a0a0a', border: `1px solid ${k.is_active ? '#ff8c0022' : '#ff000022'}`, borderRadius: 12, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -972,7 +913,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
 function DrawerSection({ title, children }) {
   return (
-    <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 900, color: '#ff8c00', letterSpacing: '0.3px' }}>{title}</div>
       {children}
     </div>
@@ -985,9 +926,7 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
 
   useEffect(() => {
     function handleClick(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setProfileOpen(false);
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setProfileOpen(false);
     }
     if (profileOpen) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -1001,8 +940,7 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
     <div style={{
       position: 'sticky', top: 0, zIndex: 10,
       background: 'rgba(8,8,8,0.95)', backdropFilter: 'blur(12px)',
-      borderBottom: '1px solid #161616',
-      padding: '0 16px', height: 52,
+      borderBottom: '1px solid #161616', padding: '0 16px', height: 52,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1019,54 +957,63 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <div ref={dropdownRef} style={{ position: 'relative' }}>
-          <button onClick={() => setProfileOpen(p => !p)}
-            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-            {avatar ? (
-              <img src={avatar} alt="" style={{ width: 30, height: 30, borderRadius: '50%', border: `1.5px solid ${profileOpen ? '#ff8c00' : '#2a2a2a'}`, transition: 'border-color 0.15s' }} />
-            ) : (
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#1a1a1a', border: `1.5px solid ${profileOpen ? '#ff8c00' : '#2a2a2a'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>👤</div>
-            )}
-          </button>
-
-          {profileOpen && (
-            <div style={{
-              position: 'absolute', top: 38, right: 0,
-              background: '#0e0e0e', border: '1px solid #222',
-              borderRadius: 14, minWidth: 210, zIndex: 50,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-              animation: 'fadeIn 0.15s ease',
-              overflow: 'hidden',
-            }}>
-              <div style={{ padding: '12px 14px', borderBottom: '1px solid #181818', display: 'flex', alignItems: 'center', gap: 10 }}>
-                {avatar ? (
-                  <img src={avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #ff8c0044', flexShrink: 0 }} />
-                ) : (
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>👤</div>
-                )}
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-                  <div style={{ fontSize: 10, color: '#444', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>
-                </div>
-              </div>
-
-              <button onClick={() => { setProfileOpen(false); onSettings(); }}
-                style={{ width: '100%', background: 'none', border: 'none', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: '#aaa', fontSize: 12, fontWeight: 700, textAlign: 'left' }}>
-                <span style={{ fontSize: 15 }}>⚙️</span> Settings
-              </button>
-
-              <div style={{ height: 1, background: '#161616', margin: '0 14px' }} />
-
-              <button onClick={() => { setProfileOpen(false); onLogout(); }}
-                style={{ width: '100%', background: 'none', border: 'none', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: '#ff4444', fontSize: 12, fontWeight: 700, textAlign: 'left' }}>
-                <span style={{ fontSize: 15 }}>🚪</span> Logout
-              </button>
-            </div>
+      <div ref={dropdownRef} style={{ position: 'relative' }}>
+        <button onClick={() => setProfileOpen(p => !p)}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          {avatar ? (
+            <img src={avatar} alt="" style={{ width: 30, height: 30, borderRadius: '50%', border: `1.5px solid ${profileOpen ? '#ff8c00' : '#2a2a2a'}`, transition: 'border-color 0.15s' }} />
+          ) : (
+            <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#1a1a1a', border: `1.5px solid ${profileOpen ? '#ff8c00' : '#2a2a2a'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>👤</div>
           )}
-        </div>
+        </button>
+
+        {profileOpen && (
+          <div style={{
+            position: 'absolute', top: 38, right: 0,
+            background: '#0e0e0e', border: '1px solid #222',
+            borderRadius: 14, minWidth: 210, zIndex: 50,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+            animation: 'fadeIn 0.15s ease', overflow: 'hidden',
+          }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid #181818', display: 'flex', alignItems: 'center', gap: 10 }}>
+              {avatar ? (
+                <img src={avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #ff8c0044', flexShrink: 0 }} />
+              ) : (
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>👤</div>
+              )}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                <div style={{ fontSize: 10, color: '#444', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>
+              </div>
+            </div>
+            <button onClick={() => { setProfileOpen(false); onSettings(); }}
+              style={{ width: '100%', background: 'none', border: 'none', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: '#aaa', fontSize: 12, fontWeight: 700, textAlign: 'left' }}>
+              <span style={{ fontSize: 15 }}>⚙️</span> Settings
+            </button>
+            <div style={{ height: 1, background: '#161616', margin: '0 14px' }} />
+            <button onClick={() => { setProfileOpen(false); onLogout(); }}
+              style={{ width: '100%', background: 'none', border: 'none', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: '#ff4444', fontSize: 12, fontWeight: 700, textAlign: 'left' }}>
+              <span style={{ fontSize: 15 }}>🚪</span> Logout
+            </button>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function GlobalStyles() {
+  return (
+    <style>{`
+      @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      @keyframes slideUp      { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      @keyframes fadeIn       { from { opacity: 0; }               to { opacity: 1; } }
+      @keyframes spin         { from { transform: rotate(0deg); }  to { transform: rotate(360deg); } }
+      @keyframes shimmer      { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+      @keyframes pulse        { 0%,100% { box-shadow: 0 0 30px rgba(255,140,0,0.25); } 50% { box-shadow: 0 0 50px rgba(255,140,0,0.5); } }
+      @keyframes btnGlow      { 0%,100% { box-shadow: 0 4px 20px rgba(255,140,0,0.3); } 50% { box-shadow: 0 4px 32px rgba(255,140,0,0.55); } }
+      @keyframes shine        { 0% { left: -100%; } 100% { left: 200%; } }
+    `}</style>
   );
 }
 

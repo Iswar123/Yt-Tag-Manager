@@ -5,8 +5,24 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
+// ── Fix 9: formatSubscribers moved to top level ───────────────────
+function formatSubscribers(count) {
+  const n = parseInt(count) || 0;
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 100000)  return (n / 1000).toFixed(0) + 'K';
+  if (n >= 10000)   return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  if (n >= 1000)    return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return n.toLocaleString();
+}
+
+// ── Fix 8: MODEL_MAP — provider hardcode hataya ───────────────────
+const MODEL_MAP = {
+  groq:       'llama-3.3-70b-versatile',
+  openrouter: 'openai/gpt-4o-mini',
+};
+
 async function aiCall(prompt, provider, apiKey) {
-  const model = provider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-4o-mini';
+  const model = MODEL_MAP[provider] ?? MODEL_MAP['openrouter'];
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -45,12 +61,11 @@ export default function DashboardPage() {
   const [generating,    setGenerating]    = useState(false);
   const [status,        setStatus]        = useState('idle');
 
+  // Fix 2: urlInput lives in parent, passed down to SearchSection
   const [urlInput, setUrlInput] = useState('');
   const [fetching, setFetching] = useState(false);
 
   const [toast, setToast] = useState({ msg: '', type: 'info' });
-
-  // Settings drawer
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const tagList  = tags.split(',').map(t => t.trim()).filter(Boolean);
@@ -86,6 +101,7 @@ export default function DashboardPage() {
     setCredsLoading(false);
   }
 
+  // Fix 2: handleFetch lives in parent
   async function handleFetch() {
     const id = extractVideoId(urlInput);
     if (!id) { showToast('⚠️ Video URL ya ID daalo!', 'warn'); return; }
@@ -158,7 +174,13 @@ export default function DashboardPage() {
     router.push('/login');
   }
 
-  // Refresh creds after settings save
+  function handleReset() {
+    setSelectedVideo(null);
+    setTags('');
+    setUrlInput(''); // Fix 2: parent resets urlInput
+    setStatus('idle');
+  }
+
   async function refreshCreds() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -178,7 +200,23 @@ export default function DashboardPage() {
   };
   const tc = toastColors[toast.type] || toastColors.info;
 
-  if (!credsLoading && !creds) {
+  // ── Fix 1: credsLoading — proper early return, no flicker ────────
+  if (credsLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
+        <Topbar user={null} onSettings={() => {}} onLogout={handleLogout} />
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, border: '3px solid #1a1a1a', borderTop: '3px solid #ff8c00', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            <span style={{ fontSize: 11, color: '#333', fontWeight: 700 }}>Loading...</span>
+          </div>
+        </div>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (!creds) {
     return (
       <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
         <Topbar user={user} onSettings={() => setSettingsOpen(true)} onLogout={handleLogout} />
@@ -214,6 +252,7 @@ export default function DashboardPage() {
             showToast={showToast}
           />
         )}
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
@@ -238,19 +277,20 @@ export default function DashboardPage() {
         onSettings={() => setSettingsOpen(true)}
         onLogout={handleLogout}
         showBack={!!selectedVideo}
-        onBack={() => { setSelectedVideo(null); setTags(''); setUrlInput(''); setStatus('idle'); }}
+        onBack={handleReset}
       />
 
       <div style={{ flex: 1, padding: '14px 12px 40px', maxWidth: 600, margin: '0 auto', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
+        {/* Fix 2: urlInput + fetching + handleFetch passed from parent */}
         {!selectedVideo && (
-          <SearchSection onFetch={(id, data) => {
-            setSelectedVideo(data);
-            setUrlInput(id);
-            setTags((data.tags || []).join(', '));
-            setStatus('idle');
-            showToast('✅ Video fetch ho gaya!', 'success');
-          }} showToast={showToast} />
+          <SearchSection
+            urlInput={urlInput}
+            setUrlInput={setUrlInput}
+            fetching={fetching}
+            onFetch={handleFetch}
+            showToast={showToast}
+          />
         )}
 
         {selectedVideo && (
@@ -315,15 +355,11 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <button onClick={() => { setSelectedVideo(null); setTags(''); setUrlInput(''); setStatus('idle'); }}
+            <button onClick={handleReset}
               style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', color: '#555', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
               🔁 Doosra Video Fetch Karo
             </button>
           </>
-        )}
-
-        {credsLoading && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#333', fontSize: 12 }}>Loading...</div>
         )}
       </div>
 
@@ -365,20 +401,22 @@ export default function DashboardPage() {
           0%,100% { box-shadow: 0 4px 20px rgba(255,140,0,0.3); }
           50%      { box-shadow: 0 4px 32px rgba(255,140,0,0.55); }
         }
+        @keyframes shine {
+          0%   { left: -100%; }
+          100% { left: 200%; }
+        }
       `}</style>
     </div>
   );
 }
 
-// ── Subscriber count formatter ────────────────────────────────────
-// ── Search Section ────────────────────────────────────────────────
-function SearchSection({ onFetch, showToast }) {
-  const [urlInput, setUrlInput] = useState('');
-  const [fetching, setFetching] = useState(false);
-  const [focused,  setFocused]  = useState(false);
-  const [typeText, setTypeText] = useState('');
-  const [typeIndex, setTypeIndex] = useState(0);
-  const [typing, setTyping] = useState(true);
+// ── Fix 2: SearchSection — controlled, urlInput + fetching + onFetch from parent ──
+function SearchSection({ urlInput, setUrlInput, fetching, onFetch, showToast }) {
+  const [focused,       setFocused]       = useState(false);
+  const [typeText,      setTypeText]      = useState('');
+  const [typeIndex,     setTypeIndex]     = useState(0);
+  const [typing,        setTyping]        = useState(true);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const typeTimer = useRef(null);
 
   const placeholders = [
@@ -387,9 +425,7 @@ function SearchSection({ onFetch, showToast }) {
     'Video ID daalo...',
     'https://youtube.com/watch?v=...',
   ];
-  const [placeholderIdx, setPlaceholderIdx] = useState(0);
 
-  // Typewriter effect for placeholder
   useEffect(() => {
     if (urlInput || focused) return;
     const current = placeholders[placeholderIdx];
@@ -416,37 +452,16 @@ function SearchSection({ onFetch, showToast }) {
     return () => clearTimeout(typeTimer.current);
   }, [typeIndex, typing, placeholderIdx, urlInput, focused]);
 
-  function extractVideoId(input) {
-    const match = input.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    return match ? match[1] : input.trim();
-  }
-
-  async function handleFetch() {
-    const id = extractVideoId(urlInput);
-    if (!id) { showToast('⚠️ Video URL ya ID daalo!', 'warn'); return; }
-    setFetching(true);
-    try {
-      const res  = await fetch(`/api/youtube?videoId=${id}`);
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error) || 'Fetch fail');
-      onFetch(id, data);
-    } catch (e) { showToast('❌ ' + e.message, 'error'); }
-    setFetching(false);
-  }
-
   const hasInput = urlInput.trim().length > 0;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '0 4px' }}>
-      {/* Icon + title */}
       <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 56, height: 56, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, boxShadow: '0 0 40px rgba(255,140,0,0.3)', animation: 'pulse 2.5s ease-in-out infinite' }}>🎬</div>
         <div style={{ fontSize: 11, color: '#555', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' }}>YouTube Tag Manager</div>
       </div>
 
-      {/* Search card */}
       <div style={{ width: '100%', marginTop: 16, background: '#111', border: `1.5px solid ${focused ? '#ff8c00' : hasInput ? '#ff8c0066' : '#2a2a2a'}`, borderRadius: 18, padding: 14, boxShadow: focused ? '0 0 0 3px rgba(255,140,0,0.1), 0 8px 32px rgba(0,0,0,0.5)' : '0 4px 20px rgba(0,0,0,0.3)', transition: 'all 0.2s ease' }}>
-        {/* Label */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
           <div style={{ width: 7, height: 7, borderRadius: '50%', background: hasInput ? '#ff8c00' : '#444', transition: 'background 0.3s', boxShadow: hasInput ? '0 0 8px #ff8c00' : 'none' }} />
           <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', color: hasInput ? '#ff8c00' : '#555' }}>
@@ -454,12 +469,11 @@ function SearchSection({ onFetch, showToast }) {
           </span>
         </div>
 
-        {/* Input */}
         <div style={{ position: 'relative', marginBottom: 12 }}>
           <input
             value={urlInput}
             onChange={e => setUrlInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleFetch()}
+            onKeyDown={e => e.key === 'Enter' && onFetch()}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder={focused ? 'Paste karo ya type karo...' : (typeText || 'YouTube URL daalo...')}
@@ -482,8 +496,7 @@ function SearchSection({ onFetch, showToast }) {
           )}
         </div>
 
-        {/* Fetch button */}
-        <button onClick={handleFetch} disabled={fetching || !hasInput}
+        <button onClick={onFetch} disabled={fetching || !hasInput}
           style={{
             width: '100%', padding: '14px', borderRadius: 12, fontSize: 13, fontWeight: 800,
             cursor: fetching || !hasInput ? 'not-allowed' : 'pointer',
@@ -500,7 +513,6 @@ function SearchSection({ onFetch, showToast }) {
             animation: hasInput && !fetching ? 'btnGlow 1.8s ease-in-out infinite' : 'none',
             position: 'relative', overflow: 'hidden',
           }}>
-          {/* Shine sweep on active */}
           {hasInput && !fetching && (
             <span style={{ position: 'absolute', top: 0, left: '-100%', width: '60%', height: '100%', background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent)', animation: 'shine 2s ease-in-out infinite' }} />
           )}
@@ -514,7 +526,6 @@ function SearchSection({ onFetch, showToast }) {
         </button>
       </div>
 
-      {/* Hint chips */}
       <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
         {['youtube.com/watch?v=...', 'youtu.be/...', 'Video ID'].map((hint, i) => (
           <span key={i} style={{ fontSize: 9, color: '#444', background: '#111', border: '1px solid #222', borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>{hint}</span>
@@ -524,20 +535,9 @@ function SearchSection({ onFetch, showToast }) {
   );
 }
 
-function formatSubscribers(count) {
-  const n = parseInt(count) || 0;
-  if (n >= 10000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (n >= 1000000)  return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (n >= 100000)   return (n / 1000).toFixed(0) + 'K';
-  if (n >= 10000)    return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  if (n >= 1000)     return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  return n.toLocaleString();
-}
-
 // ── Settings Drawer ───────────────────────────────────────────────
 function SettingsDrawer({ supabase, user, onClose, showToast }) {
   const [channelLoading, setChannelLoading] = useState(false);
-  const [apiKeysLoading, setApiKeysLoading] = useState(false);
 
   const [form, setForm] = useState({
     channel_id:          '',
@@ -551,7 +551,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
   const [channelInfo, setChannelInfo] = useState({ name: '', avatar: '', subscribers: '', subscriberHidden: false });
 
-  // API Keys
   const [apiKeys,    setApiKeys]    = useState([]);
   const [newKey,     setNewKey]     = useState('');
   const [newLabel,   setNewLabel]   = useState('');
@@ -559,7 +558,11 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   const [showAddKey, setShowAddKey] = useState(false);
   const [showApiKeysModal, setShowApiKeysModal] = useState(false);
 
+  // Fix 3: providerSaveTimer ref — cleanup on unmount
   const providerSaveTimer = useRef(null);
+  useEffect(() => {
+    return () => clearTimeout(providerSaveTimer.current);
+  }, []);
 
   useEffect(() => { loadData(); loadApiKeys(); }, []);
 
@@ -586,9 +589,9 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
           const ytData = await res.json();
           if (ytData.channelTitle) {
             setChannelInfo({
-              name:            ytData.channelTitle,
-              avatar:          ytData.channelAvatar || '',
-              subscribers:     ytData.subscriberCount || '0',
+              name:             ytData.channelTitle,
+              avatar:           ytData.channelAvatar || '',
+              subscribers:      ytData.subscriberCount || '0',
               subscriberHidden: ytData.subscriberHidden || false,
             });
           }
@@ -607,6 +610,7 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   async function handleProviderSwitch(provider) {
     setForm(f => ({ ...f, ai_provider: provider }));
     clearTimeout(providerSaveTimer.current);
+    // Fix 3: timer properly stored in ref, cleanup on unmount handles it
     providerSaveTimer.current = setTimeout(async () => {
       await supabase.from('user_credentials').upsert({
         user_id:     user.id,
@@ -686,9 +690,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
   }
 
   const ytConnected   = !!form.yt_refresh_token;
-  // YT connected + channel avatar available → channel avatar
-  // YT connected + loading → google avatar as placeholder (channel avatar aayega)
-  // YT not connected → google avatar
   const displayAvatar = (ytConnected && channelInfo.avatar)
     ? channelInfo.avatar
     : user?.user_metadata?.avatar_url || '';
@@ -698,13 +699,11 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
   return (
     <>
-      {/* Backdrop */}
       <div
         onClick={onClose}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, animation: 'fadeIn 0.2s ease' }}
       />
 
-      {/* Drawer — right se slide */}
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 101,
         width: '88vw', maxWidth: 420,
@@ -714,7 +713,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
         animation: 'slideInRight 0.28s cubic-bezier(0.32,0.72,0,1)',
         paddingBottom: 32,
       }}>
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', position: 'sticky', top: 0, background: '#0a0a0a', zIndex: 2, borderBottom: '1px solid #141414' }}>
           <span style={{ fontSize: 15, fontWeight: 900, color: '#ff8c00' }}>⚙️ Settings</span>
           <button onClick={onClose}
@@ -727,7 +725,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
           {/* User info */}
           {channelLoading ? (
-            // ── Skeleton loading ──
             <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(90deg,#1a1a1a,#242424,#1a1a1a)', backgroundSize: '200%', animation: 'shimmer 1.2s infinite', flexShrink: 0 }} />
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -738,7 +735,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
             </div>
           ) : (
             <div style={{ background: '#0c0c0c', border: '1px solid #1a1a1a', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              {/* Avatar */}
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 {displayAvatar ? (
                   <img src={displayAvatar} alt="" style={{ width: 44, height: 44, borderRadius: '50%', border: `2px solid ${ytConnected ? '#ff8c0055' : '#333'}`, display: 'block' }} />
@@ -746,7 +742,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                   <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>👤</div>
                 )}
               </div>
-              {/* Name + sub/gmail */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {displayName}
@@ -760,14 +755,13 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                   }
                 </div>
               </div>
-              {/* Badge */}
               <div style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px', flexShrink: 0, color: ytConnected ? '#44bb66' : '#555', background: ytConnected ? '#001a08' : '#111', border: `1px solid ${ytConnected ? '#44bb6622' : '#222'}` }}>
                 {ytConnected ? '✅ Connected' : '⬡ Not Connected'}
               </div>
             </div>
           )}
 
-          {/* YouTube Section — FIX 1: ternary ':' added */}
+          {/* YouTube Section */}
           <DrawerSection title="🎬 YouTube">
             {ytConnected ? (
               <>
@@ -801,7 +795,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
           {/* AI Section */}
           <DrawerSection title="🤖 AI Settings">
-            {/* Provider toggle */}
             <div style={{ display: 'flex', gap: 8 }}>
               {['openrouter', 'groq'].map(p => (
                 <button key={p} onClick={() => handleProviderSwitch(p)}
@@ -817,7 +810,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
               ))}
             </div>
 
-            {/* Only active provider key input */}
             {form.ai_provider === 'openrouter' ? (
               <div>
                 <div style={{ fontSize: 10, color: '#ff8c00', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
@@ -862,19 +854,19 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
 
             <div style={{ background: '#080808', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px', fontSize: 11, color: '#2a2a2a', lineHeight: 1.6 }}>
               Active model:{' '}
+              {/* Fix 8: MODEL_MAP used here too */}
               <span style={{ color: form.ai_provider === 'groq' ? '#00cc6655' : '#ff8c0055' }}>
-                {form.ai_provider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-4o-mini'}
+                {MODEL_MAP[form.ai_provider] ?? MODEL_MAP['openrouter']}
               </span>
             </div>
           </DrawerSection>
 
-          {/* YouTube API Keys — popup modal */}
+          {/* YouTube API Keys */}
           <DrawerSection title="🔑 YouTube API Keys (Quota Rotation)">
             <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6, background: '#0a0a0a', border: '1px solid #141414', borderRadius: 10, padding: '8px 12px' }}>
               💡 Multiple projects ke API keys add karo — quota khatam hone par automatically next key use hogi
             </div>
 
-            {/* Trigger button */}
             <button onClick={() => setShowApiKeysModal(true)}
               style={{ width: '100%', background: '#0a0a0a', border: '1px solid #ff8c0033', color: '#ff8c00', borderRadius: 10, padding: '11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               🔑 Manage API Keys
@@ -887,11 +879,9 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
           {/* API Keys Modal */}
           {showApiKeysModal && (
             <>
-              {/* Modal backdrop */}
               <div onClick={() => { setShowApiKeysModal(false); setShowAddKey(false); setNewKey(''); setNewLabel(''); }}
                 style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, animation: 'fadeIn 0.15s ease' }} />
 
-              {/* Modal box */}
               <div style={{
                 position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
                 background: '#0e0e0e', borderTop: '1px solid #222',
@@ -899,7 +889,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                 maxHeight: '75vh', display: 'flex', flexDirection: 'column',
                 animation: 'slideUp 0.25s cubic-bezier(0.32,0.72,0,1)',
               }}>
-                {/* Modal header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', borderBottom: '1px solid #181818', flexShrink: 0 }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 900, color: '#ff8c00' }}>🔑 YouTube API Keys</div>
@@ -911,7 +900,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                   </button>
                 </div>
 
-                {/* Scrollable keys list */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {apiKeys.length === 0 && !showAddKey && (
                     <div style={{ textAlign: 'center', padding: '24px 0', color: '#333', fontSize: 12 }}>
@@ -946,7 +934,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                     </div>
                   ))}
 
-                  {/* Add key form */}
                   {showAddKey && (
                     <div style={{ background: '#0c0c0c', border: '1px solid #252525', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                       <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (e.g. Project 1)" style={{ ...inputStyle, fontSize: 12 }} />
@@ -965,7 +952,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
                   )}
                 </div>
 
-                {/* Add button — sticky bottom */}
                 {!showAddKey && (
                   <div style={{ padding: '10px 14px 20px', flexShrink: 0, borderTop: '1px solid #141414' }}>
                     <button onClick={() => setShowAddKey(true)}
@@ -977,8 +963,6 @@ function SettingsDrawer({ supabase, user, onClose, showToast }) {
               </div>
             </>
           )}
-
-          {/* No logout here — moved to topbar profile dropdown */}
 
         </div>
       </div>
@@ -1036,7 +1020,6 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        {/* Profile avatar + dropdown only — settings icon removed */}
         <div ref={dropdownRef} style={{ position: 'relative' }}>
           <button onClick={() => setProfileOpen(p => !p)}
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
@@ -1056,7 +1039,6 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
               animation: 'fadeIn 0.15s ease',
               overflow: 'hidden',
             }}>
-              {/* User info */}
               <div style={{ padding: '12px 14px', borderBottom: '1px solid #181818', display: 'flex', alignItems: 'center', gap: 10 }}>
                 {avatar ? (
                   <img src={avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #ff8c0044', flexShrink: 0 }} />
@@ -1069,7 +1051,6 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
                 </div>
               </div>
 
-              {/* Settings option */}
               <button onClick={() => { setProfileOpen(false); onSettings(); }}
                 style={{ width: '100%', background: 'none', border: 'none', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: '#aaa', fontSize: 12, fontWeight: 700, textAlign: 'left' }}>
                 <span style={{ fontSize: 15 }}>⚙️</span> Settings
@@ -1077,7 +1058,6 @@ function Topbar({ user, onSettings, onLogout, showBack, onBack }) {
 
               <div style={{ height: 1, background: '#161616', margin: '0 14px' }} />
 
-              {/* Logout */}
               <button onClick={() => { setProfileOpen(false); onLogout(); }}
                 style={{ width: '100%', background: 'none', border: 'none', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: '#ff4444', fontSize: 12, fontWeight: 700, textAlign: 'left' }}>
                 <span style={{ fontSize: 15 }}>🚪</span> Logout

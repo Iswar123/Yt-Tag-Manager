@@ -441,15 +441,15 @@ function SearchSection({ onFetch, showToast }) {
       {/* Icon + title */}
       <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 56, height: 56, background: 'linear-gradient(135deg,#ff8c00,#ff4400)', borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, boxShadow: '0 0 40px rgba(255,140,0,0.3)', animation: 'pulse 2.5s ease-in-out infinite' }}>🎬</div>
-        <div style={{ fontSize: 11, color: '#444', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' }}>YouTube Tag Manager</div>
+        <div style={{ fontSize: 11, color: '#555', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' }}>YouTube Tag Manager</div>
       </div>
 
       {/* Search card */}
-      <div style={{ width: '100%', marginTop: 16, background: 'linear-gradient(145deg,#0f0f0f,#0a0a0a)', border: `1px solid ${focused ? '#ff8c0055' : hasInput ? '#ff8c0033' : '#1e1e1e'}`, borderRadius: 18, padding: 14, boxShadow: focused ? '0 0 0 3px rgba(255,140,0,0.08), 0 8px 32px rgba(0,0,0,0.4)' : '0 4px 20px rgba(0,0,0,0.3)', transition: 'all 0.2s ease' }}>
+      <div style={{ width: '100%', marginTop: 16, background: '#111', border: `1.5px solid ${focused ? '#ff8c00' : hasInput ? '#ff8c0066' : '#2a2a2a'}`, borderRadius: 18, padding: 14, boxShadow: focused ? '0 0 0 3px rgba(255,140,0,0.1), 0 8px 32px rgba(0,0,0,0.5)' : '0 4px 20px rgba(0,0,0,0.3)', transition: 'all 0.2s ease' }}>
         {/* Label */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: hasInput ? '#ff8c00' : '#333', transition: 'background 0.3s', boxShadow: hasInput ? '0 0 6px #ff8c00' : 'none' }} />
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', background: hasInput ? 'linear-gradient(90deg,#ff8c00,#ff4400)' : 'none', WebkitBackgroundClip: hasInput ? 'text' : 'unset', WebkitTextFillColor: hasInput ? 'transparent' : '#333', color: hasInput ? 'transparent' : '#333', transition: 'all 0.3s' }}>
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: hasInput ? '#ff8c00' : '#444', transition: 'background 0.3s', boxShadow: hasInput ? '0 0 8px #ff8c00' : 'none' }} />
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', color: hasInput ? '#ff8c00' : '#555' }}>
             📹 Video URL / ID
           </span>
         </div>
@@ -462,21 +462,21 @@ function SearchSection({ onFetch, showToast }) {
             onKeyDown={e => e.key === 'Enter' && handleFetch()}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={focused ? 'Paste karo ya type karo...' : typeText}
+            placeholder={focused ? 'Paste karo ya type karo...' : (typeText || 'YouTube URL daalo...')}
             style={{
-              width: '100%', background: '#080808',
-              border: `1px solid ${focused ? '#ff8c0044' : '#1a1a1a'}`,
+              width: '100%',
+              background: '#1a1a1a',
+              border: `1px solid ${focused ? '#ff8c0055' : '#2a2a2a'}`,
               borderRadius: 12, padding: '13px 44px 13px 16px',
-              fontSize: 13, color: '#eee', outline: 'none',
+              fontSize: 13, color: '#fff', outline: 'none',
               boxSizing: 'border-box', fontFamily: 'inherit',
               transition: 'border-color 0.2s',
               caretColor: '#ff8c00',
             }}
           />
-          {/* Clear button */}
           {hasInput && (
             <button onClick={() => setUrlInput('')}
-              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: '#1a1a1a', border: 'none', color: '#555', borderRadius: '50%', width: 22, height: 22, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: '#2a2a2a', border: 'none', color: '#888', borderRadius: '50%', width: 22, height: 22, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
               ✕
             </button>
           )}
@@ -487,19 +487,25 @@ function SearchSection({ onFetch, showToast }) {
           style={{
             width: '100%', padding: '14px', borderRadius: 12, fontSize: 13, fontWeight: 800,
             cursor: fetching || !hasInput ? 'not-allowed' : 'pointer',
-            background: fetching ? 'linear-gradient(135deg,#1a0800,#100500)' : hasInput ? 'linear-gradient(135deg,#ff8c00,#ff4400)' : '#0a0a0a',
-            border: fetching ? '1px solid #ff8c0033' : hasInput ? 'none' : '1px solid #1a1a1a',
-            color: fetching ? '#ff8c0088' : hasInput ? '#fff' : '#2a2a2a',
-            boxShadow: hasInput && !fetching ? '0 4px 24px rgba(255,140,0,0.35)' : 'none',
+            background: fetching
+              ? 'linear-gradient(135deg,#1a0800,#100500)'
+              : hasInput
+                ? 'linear-gradient(135deg,#ff8c00,#ff4400)'
+                : '#1a1a1a',
+            border: fetching ? '1px solid #ff8c0033' : hasInput ? 'none' : '1px solid #2a2a2a',
+            color: fetching ? '#ff8c0088' : hasInput ? '#fff' : '#444',
+            boxShadow: hasInput && !fetching ? '0 4px 24px rgba(255,140,0,0.4)' : 'none',
             transition: 'all 0.25s ease',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            animation: hasInput && !fetching ? 'btnGlow 2s ease-in-out infinite' : 'none',
+            animation: hasInput && !fetching ? 'btnGlow 1.8s ease-in-out infinite' : 'none',
+            position: 'relative', overflow: 'hidden',
           }}>
+          {/* Shine sweep on active */}
+          {hasInput && !fetching && (
+            <span style={{ position: 'absolute', top: 0, left: '-100%', width: '60%', height: '100%', background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent)', animation: 'shine 2s ease-in-out infinite' }} />
+          )}
           {fetching ? (
-            <>
-              <span style={{ display: 'inline-block', animation: 'spin 0.8s linear infinite' }}>⏳</span>
-              Fetching...
-            </>
+            <><span style={{ display: 'inline-block', animation: 'spin 0.8s linear infinite' }}>⏳</span> Fetching...</>
           ) : hasInput ? (
             <>🚀 Fetch Video</>
           ) : (
@@ -508,10 +514,10 @@ function SearchSection({ onFetch, showToast }) {
         </button>
       </div>
 
-      {/* Hint */}
+      {/* Hint chips */}
       <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
         {['youtube.com/watch?v=...', 'youtu.be/...', 'Video ID'].map((hint, i) => (
-          <span key={i} style={{ fontSize: 9, color: '#2a2a2a', background: '#0c0c0c', border: '1px solid #181818', borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>{hint}</span>
+          <span key={i} style={{ fontSize: 9, color: '#444', background: '#111', border: '1px solid #222', borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>{hint}</span>
         ))}
       </div>
     </div>
